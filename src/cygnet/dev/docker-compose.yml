@@ -1,0 +1,42 @@
+# Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
+#
+# Phase 1 Neo4j container for the benchmark suite. Distinct from the
+# integration-test container in tests/integration/docker-compose.yml
+# (port 7688) so both can run in parallel during dev:
+#
+#   - tests/integration/docker-compose.yml   bolt :7688   ephemeral
+#   - benchmarks/.../docker-compose.yml      bolt :7689   persistent volume
+#
+# Heap sized generously for Phase 1 (1G initial, 2G max) so the full
+# recommendations dataset (~40K nodes) loads cleanly. APOC plugin
+# enabled so the schema introspection path matches what the library
+# expects when [explain] / introspect modes are exercised.
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: cygnet-benchmark-neo4j
+    ports:
+      - "7689:7687"
+      - "7475:7474"
+    environment:
+      NEO4J_AUTH: "neo4j/benchmarkpassword"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.*"
+      NEO4J_server_memory_heap_initial__size: "1G"
+      NEO4J_server_memory_heap_max__size: "2G"
+      NEO4J_server_memory_pagecache_size: "512M"
+    volumes:
+      - cygnet_benchmark_data:/data
+      - cygnet_benchmark_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p benchmarkpassword 'RETURN 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  cygnet_benchmark_data:
+  cygnet_benchmark_logs:

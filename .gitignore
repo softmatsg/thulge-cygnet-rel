@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+build/
+dist/
+.eggs/
+pip-wheel-metadata/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Notebooks
+.ipynb_checkpoints/
+*.ipynb_meta/
+
+# Secrets / credentials
+.env
+.env.*
+*.env
+!.env.example
+*.key
+*.pem
+credentials.json
+*.secret
+
+# Neo4j data and dumps
+data/
+neo4j-data/
+*.dump
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Claude Code personal overrides (team config in .claude/CLAUDE.md is committed)
+.claude/settings.local.json
+
+# Benchmark results (large, machine-specific, reproducible from the runners).
+# Keep the directory itself via .gitkeep.
+benchmarks/results/*/
+!benchmarks/results/.gitkeep
+# Mirror-check baseline reports (small JSON, hand-reviewed, project
+# artefact per Brief #47a). Tracked even though other results/
+# subtrees are working scratch.
+!benchmarks/results/mirror_checks/
+!benchmarks/results/mirror_checks/*.json
+
+# Per-user dataset cache for the benchmark suite. Path lives under ~/.cygnet/
+# and is therefore outside this repo; listed here as documentation only.
+# ~/.cygnet/benchmarks/cache/

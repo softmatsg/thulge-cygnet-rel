@@ -1,0 +1,223 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thulge-cygnet"
+version = "0.0.45"
+description = "Cypher Gate for Neural Execution Triage: pre-execution validation, cost gating, and structured correction for LLM-generated Cypher queries against Neo4j."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Nikodem Tomczak", email = "softmatsg@gmail.com" }]
+keywords = ["neo4j", "cypher", "llm", "agent", "validation", "knowledge-graph"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neo4j>=5.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# antlr4-cypher 0.1.2 (BSD-3) ships a pure-Python ANTLR4-generated
+# Cypher 9 parser. Selected in docs/ast_wrapper_evaluation.md.
+# antlr4-python3-runtime is a transitive dep but pinned explicitly so a
+# new runtime release can't quietly break the generated parser.
+ast = [
+    "antlr4-cypher>=0.1.2,<0.2",
+    "antlr4-python3-runtime>=4.13,<5",
+]
+mcp = [
+    # FastMCP carries the official MCP SDK as a transitive dep and
+    # adds the higher-level @tool decorator + Client surface we use.
+    "fastmcp>=3.0,<4",
+]
+http = [
+    # FastAPI + uvicorn power the HTTP transport. `uvicorn[standard]`
+    # pulls in the optional fast-path implementations (httptools,
+    # uvloop on POSIX, watchfiles) that production deployments want.
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.30",
+]
+corrector = [
+    # Thulge's RAMPART (instruction-block registry) is the prompt
+    # assembler the corrector compiles its context with. Pinned at
+    # the local development checkout via [tool.uv.sources]; the PyPI
+    # package named `rampart` is an unrelated agent-orchestration
+    # library and is NOT what this depends on.
+    "rampart>=0.1.0,<0.2",
+    # Anthropic SDK for the default LLM backend.
+    "anthropic>=0.39",
+    # OpenAI is offered as an alternative backend.
+    "openai>=1.50",
+    # Google Gemini via the unified ``google-genai`` SDK (the
+    # post-2024 replacement for the older ``google-generativeai``
+    # package; uses Client / Models API).
+    "google-genai>=1.0",
+    # Local model serving via Ollama. The ``ollama`` Python client
+    # is a thin HTTP wrapper around a locally-running ``ollama``
+    # daemon (default port 11434); the daemon and any models must
+    # be installed and pulled out-of-band.
+    "ollama>=0.4",
+]
+mirror = []
+all = []
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    # pytest-docker pin keeps the API stable for integration tests.
+    "pytest-docker>=3.2,<4",
+    # Python Docker SDK — used for container introspection beyond
+    # what pytest-docker exposes (e.g. fetching logs on healthcheck
+    # timeout in the integration conftest).
+    "docker>=7.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "nbformat>=5.0",
+    "nbclient>=0.10",
+    "ipykernel>=6.0",
+    "jupyter-client>=8.0",
+]
+
+[project.scripts]
+# MCP server launcher. Installed by `pip install thulge-cygnet[mcp]`
+# and runnable as `cygnet-mcp --config path/to/config.yaml`.
+cygnet-mcp = "cygnet.cli.serve_mcp:main"
+# HTTP server launcher. Installed by `pip install thulge-cygnet[http]`
+# and runnable as `cygnet-http --config path/to/config.yaml`.
+cygnet-http = "cygnet.cli.serve_http:main"
+
+[project.urls]
+Repository = "https://github.com/softmatsg/thulge-cygnet"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cygnet = [
+    "py.typed",
+    # RAMPART block library shipped as package data so the corrector
+    # can find its seed prompts from any installed location.
+    "corrector/rampart_blocks/*.md",
+    "corrector/rampart_blocks/error_vocab/*.md",
+    "corrector/rampart_blocks/patterns/*.md",
+    # cygnet.dev.neo4j_lifecycle ships the docker-compose.yml it manages.
+    "dev/*.yml",
+]
+
+[tool.uv.sources]
+# Resolve `rampart` to the local Thulge development checkout rather
+# than the unrelated PyPI homonym. Editable so iteration in
+# thulge-rampart is reflected without reinstall.
+rampart = { path = "../thulge-rampart", editable = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",  # line too long (formatter handles)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802", "N803"]  # allow test function/arg naming flexibility
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Thulge's RAMPART (resolved to a local path via tool.uv.sources) does
+# not ship a py.typed marker for downstream consumers; treat its
+# public surface as Any for our type checks.
+module = ["rampart"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# google-genai is part of the corrector extra; not installed in the
+# default dev environment used for type-checking. Treat its surface
+# as Any so the LLM-client wrapper modules type-check whether or not
+# the extra is present.
+module = ["google", "google.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# ollama (the official Python client) is part of the corrector
+# extra; not installed in the default dev environment used for
+# type-checking. Treat its surface as Any so the local-model
+# wrapper modules type-check whether or not the extra is present.
+module = ["ollama"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "benchmarks/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+# Default `pytest` skips integration tests so the unit suite stays
+# Docker-free and fast. Run integration tests explicitly with
+# `pytest -m integration tests/integration`.
+addopts = "-ra --strict-markers -m 'not integration'"
+markers = [
+    "integration: integration tests requiring external services (e.g. Neo4j via pytest-docker)",
+]
+
+[tool.coverage.run]
+source = ["src/cygnet"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "nbconvert>=7.17.1",
+]
