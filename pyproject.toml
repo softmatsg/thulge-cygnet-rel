@@ -104,7 +104,8 @@ cygnet-mcp = "cygnet.cli.serve_mcp:main"
 cygnet-http = "cygnet.cli.serve_http:main"
 
 [project.urls]
-Repository = "https://github.com/softmatsg/thulge-cygnet"
+Repository = "https://github.com/softmatsg/thulge-cygnet-rel"
+Issues = "https://github.com/softmatsg/thulge-cygnet-rel/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
