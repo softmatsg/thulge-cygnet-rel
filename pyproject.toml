@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thulge-cygnet"
-version = "0.0.45"
+version = "0.0.46"
 description = "Cypher Gate for Neural Execution Triage: pre-execution validation, cost gating, and structured correction for LLM-generated Cypher queries against Neo4j."
 readme = "README.md"
 requires-python = ">=3.11"

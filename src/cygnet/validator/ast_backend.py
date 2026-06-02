@@ -200,6 +200,27 @@ class _CreatePattern:
 
 
 @dataclass
+class _PathSegment:
+    """A single (left-node, relationship, right-node) triple inside a
+    path pattern. The pattern ``(a:X)-[:R1|R2]->(b:Y)-[:S]->(c:Z)``
+    produces two segments: (X, R1|R2, ->, Y) and (Y, S, ->, Z).
+
+    Used by the rel-endpoint compatibility check. ``left_labels`` and
+    ``right_labels`` are the declared labels on each side (empty set
+    means no label was declared, in which case the segment is skipped).
+    ``direction`` is one of ``"right"`` (``->``), ``"left"`` (``<-``),
+    or ``"undirected"`` (``-``).
+    """
+
+    left_labels: set[str]
+    rel_types: list[str]
+    direction: str
+    right_labels: set[str]
+    line: int
+    col: int
+
+
+@dataclass
 class _CollectedAST:
     """Everything one pass over the AST collects. The fields are
     consumed by the per-stage checks in :meth:`ASTValidator.validate`."""
@@ -211,6 +232,9 @@ class _CollectedAST:
     """Property accesses ``var.prop``: list of (var, prop, line, col)."""
     comparisons: list[_Comparison] = field(default_factory=list)
     create_patterns: list[_CreatePattern] = field(default_factory=list)
+    path_segments: list[_PathSegment] = field(default_factory=list)
+    """One per (node, rel, node) triple in any path pattern. Used by
+    the rel-endpoint compatibility check."""
 
 
 class _Collector(CypherParserListener):  # type: ignore[misc]
@@ -333,6 +357,131 @@ class _Collector(CypherParserListener):  # type: ignore[misc]
         for sub in self._children_of_type(ctx, "NameContext"):
             line, col = self._start_loc(sub)
             self.info.rel_type_refs.append((sub.getText(), line, col))
+
+    # -- Path segments (node-rel-node triples) --------------------------
+
+    def enterPatternElem(self, ctx: ParserRuleContext) -> None:  # noqa: N802
+        """Walk a ``PatternElem`` and emit one :class:`_PathSegment` per
+        (left-node, rel, right-node) triple. Layout:
+
+            PatternElem
+              NodePattern (left)
+              PatternElemChain*  (zero or more rel + right-node pairs)
+                RelationshipPattern
+                  TerminalNodeImpl '<' or '-'  (left of bracket)
+                  RelationDetail   (optional; absent means '-[]-')
+                    RelationshipTypes (optional)
+                  TerminalNodeImpl '-' or '>'  (right of bracket)
+                NodePattern (right)
+
+        Multi-hop chains produce multiple segments.
+        """
+        children = list(getattr(ctx, "children", None) or ())
+        # Find the leading NodePattern.
+        left_node = None
+        idx = 0
+        while idx < len(children) and type(children[idx]).__name__ != "NodePatternContext":
+            idx += 1
+        if idx >= len(children):
+            return
+        left_node = children[idx]
+        idx += 1
+
+        # Walk PatternElemChain children in order.
+        while idx < len(children):
+            ch = children[idx]
+            if type(ch).__name__ != "PatternElemChainContext":
+                idx += 1
+                continue
+            # Extract RelationshipPattern + NodePattern from this chain.
+            rel_pat = None
+            right_node = None
+            for sub in getattr(ch, "children", None) or ():
+                sn = type(sub).__name__
+                if sn == "RelationshipPatternContext" and rel_pat is None:
+                    rel_pat = sub
+                elif sn == "NodePatternContext" and right_node is None:
+                    right_node = sub
+            if rel_pat is None or right_node is None:
+                idx += 1
+                continue
+            segment = self._build_path_segment(left_node, rel_pat, right_node)
+            if segment is not None:
+                self.info.path_segments.append(segment)
+            # The right node of this segment is the left node of the next.
+            left_node = right_node
+            idx += 1
+
+    @classmethod
+    def _node_labels(cls, node_ctx: Any) -> set[str]:
+        """Return the declared labels on a ``NodePatternContext`` (may
+        be empty)."""
+        labels: set[str] = set()
+        for ch in getattr(node_ctx, "children", None) or ():
+            if type(ch).__name__ != "NodeLabelsContext":
+                continue
+            for sub in cls._children_of_type(ch, "NameContext"):
+                labels.add(sub.getText())
+        return labels
+
+    @classmethod
+    def _rel_segment_details(
+        cls, rel_pat_ctx: Any
+    ) -> tuple[list[str], str]:
+        """Return (rel_types, direction) for a ``RelationshipPatternContext``.
+        ``direction`` is one of ``"right"`` / ``"left"`` / ``"undirected"``.
+        ``rel_types`` is the list inside ``-[:R1|R2|...]->``; empty when
+        the pattern is ``-[]-`` or ``--``."""
+        # Direction: scan the ordered children. A '<' before the bracket
+        # means left-pointing; a '>' after the bracket means right-pointing.
+        has_left_arrow = False
+        has_right_arrow = False
+        bracket_seen = False
+        rel_types: list[str] = []
+
+        for ch in getattr(rel_pat_ctx, "children", None) or ():
+            n = type(ch).__name__
+            if n == "TerminalNodeImpl":
+                txt = ch.getText()
+                if txt == "<" and not bracket_seen:
+                    has_left_arrow = True
+                elif txt == ">" and bracket_seen:
+                    has_right_arrow = True
+                elif txt == "[":
+                    bracket_seen = True
+            elif n == "RelationDetailContext":
+                bracket_seen = True
+                # Find the RelationshipTypes child (optional).
+                for sub in getattr(ch, "children", None) or ():
+                    if type(sub).__name__ != "RelationshipTypesContext":
+                        continue
+                    for name_ctx in cls._children_of_type(sub, "NameContext"):
+                        rel_types.append(name_ctx.getText())
+
+        if has_right_arrow and not has_left_arrow:
+            direction = "right"
+        elif has_left_arrow and not has_right_arrow:
+            direction = "left"
+        else:
+            direction = "undirected"
+        return rel_types, direction
+
+    @classmethod
+    def _build_path_segment(
+        cls, left_node: Any, rel_pat: Any, right_node: Any
+    ) -> _PathSegment | None:
+        left_labels = cls._node_labels(left_node)
+        right_labels = cls._node_labels(right_node)
+        rel_types, direction = cls._rel_segment_details(rel_pat)
+        line, col = cls._start_loc(rel_pat)
+        return _PathSegment(
+            left_labels=left_labels,
+            rel_types=rel_types,
+            direction=direction,
+            right_labels=right_labels,
+            line=line,
+            col=col,
+        )
 
     # -- Property accesses ---------------------------------------------
 
@@ -514,6 +663,14 @@ class ASTValidator:
             for c in schema.constraints
             if "EXISTENCE" in c.type.upper() and c.property is not None
         ]
+        # Rel endpoint lookup: name -> (source_label, target_label). Used
+        # by the rel-endpoint compatibility check to verify that a query
+        # like (a:X)-[:R]->(b:Y) declares X and Y as the source/target of
+        # R in the schema. Direction-aware.
+        self._rel_endpoints: dict[str, tuple[str, str]] = {
+            rt.name: (rt.source_label, rt.target_label)
+            for rt in schema.relationship_types
+        }
 
     # ------------------------------------------------------------------
     # Public API
@@ -553,6 +710,17 @@ class ASTValidator:
         if schema_err is not None:
             return StructuralValidatorResult(
                 passed=False, failed_stage="schema", error_payload=schema_err
+            )
+
+        # 3b. Rel-endpoint compatibility: for each (a:X)-[:R]->(b:Y) path
+        # segment, verify that R is declared in the schema to connect X
+        # to Y (direction-aware). Catches plausible-mistake rel-swaps and
+        # label-swaps in path patterns that the bare existence checks
+        # above accept.
+        rel_err = self._check_rel_endpoints(info, query)
+        if rel_err is not None:
+            return StructuralValidatorResult(
+                passed=False, failed_stage="schema", error_payload=rel_err
             )
 
         # 4. Property type-mismatch checks (WHERE comparisons).
@@ -660,6 +828,89 @@ class ASTValidator:
                 col=col,
                 max_suggestions=self._max_suggestions,
                 cutoff=self._cutoff,
+            )
+        return None
+
+    # ------------------------------------------------------------------
+    # Stage 2b: rel-endpoint compatibility
+    # ------------------------------------------------------------------
+
+    def _check_rel_endpoints(self, info: _CollectedAST, query: str) -> SchemaError | None:
+        """For each path segment ``(a:X)-[:R]->(b:Y)``, verify that R is
+        declared in the schema to connect X to Y.
+
+        Skip rules (return ``None`` for the segment, i.e. accept):
+
+        - Either end has no declared label. We can't say which schema
+          endpoint is meant; the structural check requires both ends.
+        - No rel types in the segment (``-[]-`` or ``--``). Any rel
+          type could apply; structural check not meaningful here.
+        - One or more rel types are not declared in the schema. Those
+          would have already been caught by :meth:`_check_schema_refs`
+          (which runs before this method); if we reach here, the rel
+          types are declared, but we still defensively skip unknowns.
+
+        Direction semantics:
+
+        - ``"right"`` (``->``): R must declare source=X, target=Y.
+        - ``"left"`` (``<-``): R must declare source=Y, target=X.
+        - ``"undirected"`` (``-``): either of the above is acceptable.
+
+        Multi-type ``:R1|R2`` is treated as a disjunction — the segment
+        is accepted if AT LEAST ONE rel type in the list is compatible
+        with the labels and direction.
+
+        Multi-label nodes ``(a:X:Z)`` are treated as conjunctions (the
+        node binds to BOTH labels), so the segment is acceptable if the
+        rel connects any one of {X, Z} on one side and any one of the
+        other side's labels in the correct direction. This matches
+        Cypher's bind-to-all-labels semantics.
+        """
+        for seg in info.path_segments:
+            if not seg.left_labels or not seg.right_labels:
+                continue
+            if not seg.rel_types:
+                continue
+            # Filter to declared rel types.
+            declared_in_segment = [r for r in seg.rel_types if r in self._rel_endpoints]
+            if not declared_in_segment:
+                continue
+            # Check whether ANY declared rel type connects the labels in
+            # at least one acceptable direction.
+            any_match = False
+            for rt in declared_in_segment:
+                src, tgt = self._rel_endpoints[rt]
+                if seg.direction in {"right", "undirected"}:
+                    if src in seg.left_labels and tgt in seg.right_labels:
+                        any_match = True
+                        break
+                if seg.direction in {"left", "undirected"}:
+                    if src in seg.right_labels and tgt in seg.left_labels:
+                        any_match = True
+                        break
+            if any_match:
+                continue
+            # No declared rel type matches. Report on the first one.
+            first_rt = declared_in_segment[0]
+            src, tgt = self._rel_endpoints[first_rt]
+            # Build a human-readable available_in_scope: which rel types
+            # *do* connect (any of) the left labels to (any of) the right
+            # labels in any direction.
+            available: set[str] = set()
+            for cand_name, (cand_src, cand_tgt) in self._rel_endpoints.items():
+                if ((cand_src in seg.left_labels and cand_tgt in seg.right_labels)
+                        or (cand_src in seg.right_labels and cand_tgt in seg.left_labels)):
+                    available.add(cand_name)
+            # Direction-aware suggestion text encoded into ``did_you_mean``:
+            # for now, suggest the rel-types that do connect these labels.
+            return SchemaError(
+                category="schema",
+                unknown_reference=first_rt,
+                reference_kind="relationship",
+                did_you_mean=sorted(available)[: self._max_suggestions],
+                query_context=_snippet_at(query, seg.line, seg.col),
+                available_in_scope=sorted(self._rel_names),
+                available_in_scope_truncated=False,
             )
         return None
 
