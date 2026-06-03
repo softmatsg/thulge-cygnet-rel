@@ -12,13 +12,11 @@ The :class:`LLMClient` protocol is duck-typed; nothing in this
 module requires inheritance. Callers can substitute a mock by
 exposing a ``complete`` method with the same signature.
 
-v0.0.31: ``complete`` returns :class:`LLMResponse` instead of a
-plain string. Carries text plus token counts, model identifier,
-provider name, and wall-clock latency so the corrector can emit
-an :class:`LLMCallObservation` and the bench can compute cost
-from the same single response. The previous ``-> str`` shape is
-a breaking change for direct callers; the bench is migrated in
-the same v0.0.31 slice.
+``complete`` returns :class:`LLMResponse`, which carries text
+plus token counts, model identifier, provider name, and wall-clock
+latency so the corrector can emit an :class:`LLMCallObservation`
+and downstream consumers can compute cost from the same single
+response.
 """
 
 from __future__ import annotations
@@ -54,9 +52,9 @@ class LLMResponse(BaseModel):
 
     Concrete clients fill all fields. The corrector reads
     :attr:`text` for parsing and uses the rest to populate a
-    per-call observation handed to telemetry. The bench's cost-
-    aware wrapper reads :attr:`input_tokens` / :attr:`output_tokens`
-    and applies its price table.
+    per-call observation handed to telemetry. Downstream cost-aware
+    wrappers can read :attr:`input_tokens` / :attr:`output_tokens`
+    and apply a price table.
 
     ``elapsed_seconds`` is wall-clock time around the SDK call,
     measured client-side. Useful for telemetry and for spotting
@@ -100,17 +98,16 @@ class LLMResponse(BaseModel):
 class LLMClient(Protocol):
     """Minimal LLM-completion surface the corrector binds against.
 
-    v0.0.30: when ``json_object`` is ``True`` the client should use
-    its provider-native structured-output mode where available
-    (Gemini ``responseSchema``, Anthropic forced-tool, OpenAI
+    When ``json_object`` is ``True`` the client should use its
+    provider-native structured-output mode where available (Gemini
+    ``responseSchema``, Anthropic forced-tool, OpenAI
     ``response_format``). Providers without a native mode (Ollama)
     should fall back to prompt-side instruction; the parser
     tolerates fence-wrapping and surrounding prose either way.
 
-    v0.0.31: return type changed from ``str`` to
-    :class:`LLMResponse` so the corrector and downstream consumers
-    can read tokens and latency without poking at provider-
-    specific response shapes.
+    The return type is :class:`LLMResponse` so the corrector and
+    downstream consumers can read tokens and latency without poking
+    at provider-specific response shapes.
     """
 
     def complete(
@@ -148,33 +145,23 @@ _CYPHER_ONLY_RESPONSE_SCHEMA: dict[str, Any] = {
     },
     "required": ["cypher"],
 }
-"""v0.0.41: the shipped default ``response_schema``
-fallback for every LLM client. Pairs with the V4 system prompt
-promoted in :data:`cygnet.corrector.rampart_backed.V4_SYSTEM_PROMPT`.
+"""The shipped default ``response_schema`` fallback for every LLM
+client. Pairs with the system prompt in
+:data:`cygnet.corrector.rampart_backed.V4_SYSTEM_PROMPT`.
 
-Originally introduced in v0.0.38 as the
-cypher-only schema variant for prompt variants V3 onwards. The
-prior default :data:`_CYPHER_RESPONSE_SCHEMA` advertised an
-optional ``explanation`` field; Gemini 3 Flash spent its
-``max_tokens`` budget filling that field and truncated the JSON
-mid-string roughly one call in three, depressing prompt-following
-by ~25 pp. The cypher-only variant strips ``explanation`` so the
-SDK's structured-output enforcement doesn't suggest it. v0.0.41
-promotes it to the default after the lift was confirmed across
-the Google-family lineup.
+The cypher-only variant strips ``explanation`` so the SDK's
+structured-output enforcement doesn't suggest it.
 
 The constant intentionally omits ``additionalProperties``. The
 Gemini API's structured-output validator rejects unknown JSON-
-Schema keys (``Unknown name "additional_properties" at
-'generation_config.response_schema'``), so adding it breaks every
-Gemini call (the v0.0.38 → v0.0.39 patch dropped the field for
-exactly this reason). OpenAI's structured-outputs strict mode
-REQUIRES ``additionalProperties: false`` — the OpenAI client
-wrapper injects the field at call time rather than baking it into
-this shared constant; see :class:`OpenAIClient.complete`.
+Schema keys, so adding it breaks every Gemini call. OpenAI's
+structured-outputs strict mode REQUIRES
+``additionalProperties: false`` — the OpenAI client wrapper
+injects the field at call time rather than baking it into this
+shared constant; see :class:`OpenAIClient.complete`.
 
-Callers that need the legacy cypher-with-explanation schema opt
-in via ``response_schema=_CYPHER_RESPONSE_SCHEMA`` on the client
+Callers that need the cypher-with-explanation schema opt in via
+``response_schema=_CYPHER_RESPONSE_SCHEMA`` on the client
 constructor.
 """
 
@@ -206,11 +193,8 @@ class AnthropicClient:
 
         self._model = model
         self._client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
-        # : per-client override for the structured-
-        # output schema. When ``None``, falls back to
-        # :data:`_CYPHER_RESPONSE_SCHEMA`. Pass
-        # :data:`_CYPHER_ONLY_RESPONSE_SCHEMA` to test prompt
-        # variants V3 onwards.
+        # Per-client override for the structured-output schema. When
+        # ``None``, falls back to :data:`_CYPHER_ONLY_RESPONSE_SCHEMA`.
         self._response_schema = response_schema
 
     @property
@@ -309,7 +293,7 @@ class OpenAIClient:
 
         self._model = model
         self._client = openai.OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
-        # : per-client schema override (see Anthropic).
+        # Per-client schema override (see Anthropic).
         self._response_schema = response_schema
 
     @property
@@ -400,7 +384,7 @@ class GoogleGeminiClient:
         self._model = model
         resolved = api_key or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
         self._client = genai.Client(api_key=resolved)
-        # : per-client schema override (see Anthropic).
+        # Per-client schema override (see Anthropic).
         self._response_schema = response_schema
 
     @property
@@ -435,10 +419,10 @@ class GoogleGeminiClient:
         )
         elapsed = time.perf_counter() - started
         text = response.text or ""
-        # v0.0.29 cost-tracker fix: read total_token_count and
-        # compute output_tokens = total - prompt so thinking-model
-        # reasoning tokens are captured. The candidates_token_count
-        # field undercounts by ~10x on Gemini 3.x preview models.
+        # Read total_token_count and compute output_tokens =
+        # total - prompt so thinking-model reasoning tokens are
+        # captured. The candidates_token_count field undercounts by
+        # ~10x on Gemini 3.x preview models.
         usage = getattr(response, "usage_metadata", None)
         prompt_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
         candidate_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
@@ -498,7 +482,7 @@ class OllamaClient:
         # ollama.Client accepts host=None (uses its built-in default
         # of http://localhost:11434).
         self._client = ollama.Client(host=resolved_host) if resolved_host else ollama.Client()
-        # : per-client schema override (see Anthropic).
+        # Per-client schema override (see Anthropic).
         self._response_schema = response_schema
 
     @property
@@ -622,15 +606,11 @@ def _provider_transient_exceptions() -> tuple[type[BaseException], ...]:
     :class:`RetryPolicy` retryable set.
 
     Each provider import is independently guarded so a user without
-    one of the SDKs installed can still import this module. The
-    v0.0.33 widening: prior default of just
-    :class:`TransientLLMError` was too narrow — Google SDK's
-    ``ResourceExhausted`` (429), ``ServiceUnavailable`` (503), and
-    Anthropic / OpenAI equivalents now retry by default. Bench
-    measurement on Gemma 4 free tier and Gemini 2.5 Flash-Lite was
-    blocked under the old default; the SDKs themselves respect
-    ``Retry-After`` headers, and our :class:`RetryPolicy` adds the
-    exponential-backoff layer on top.
+    one of the SDKs installed can still import this module. Google
+    SDK's ``ResourceExhausted`` (429), ``ServiceUnavailable`` (503),
+    and Anthropic / OpenAI equivalents retry by default. The SDKs
+    themselves respect ``Retry-After`` headers, and
+    :class:`RetryPolicy` adds the exponential-backoff layer on top.
 
     Returns a tuple of every successfully-imported exception class
     plus :class:`TransientLLMError`. Order doesn't matter for
@@ -639,14 +619,13 @@ def _provider_transient_exceptions() -> tuple[type[BaseException], ...]:
     classes: list[type[BaseException]] = [TransientLLMError]
 
     # Google ``google-genai`` 2.x SDK transient classes (used by
-    # GoogleGeminiClient). named the older
-    # ``google.api_core.exceptions.*`` set; the new SDK collapsed
-    # those into ``ClientError`` (all 4xx including 429 rate-limit)
-    # and ``ServerError`` (all 5xx including 500/502/503/504).
-    # We retry both. ``ClientError`` is broader than ideal (catches
+    # GoogleGeminiClient). The SDK collapses transients into
+    # ``ClientError`` (all 4xx including 429 rate-limit) and
+    # ``ServerError`` (all 5xx including 500/502/503/504). We retry
+    # both. ``ClientError`` is broader than ideal (catches
     # 400/401/404 too); those will exhaust the retry budget
     # naturally and surface, costing a handful of extra seconds.
-    # Worth it to unblock 429 retry on Gemma free tier.
+    # Worth it to unblock 429 retry on free-tier endpoints.
     try:
         from google.genai import errors as _genai_excs
 
@@ -661,9 +640,8 @@ def _provider_transient_exceptions() -> tuple[type[BaseException], ...]:
 
     # Older ``google.api_core.exceptions`` set (used when the
     # legacy ``google-generativeai`` SDK or other google-cloud
-    # client libraries are present). listed these by
-    # name; kept for compatibility even though ``google-genai``
-    # is the corrector's default.
+    # client libraries are present). Kept for compatibility even
+    # though ``google-genai`` is the corrector's default.
     try:
         from google.api_core import exceptions as _google_excs
 
@@ -717,8 +695,8 @@ _DEFAULT_RETRYABLE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
 
 
 def _detect_rate_limit_hint(exc: BaseException) -> tuple[bool, float | None]:
-    """v0.0.40: identify HTTP 429 / rate-limit errors
-    and extract a quota-reset hint if the response carries one.
+    """Identify HTTP 429 / rate-limit errors and extract a quota-reset
+    hint if the response carries one.
 
     Returns ``(is_rate_limit, hint_seconds)``:
 
@@ -740,11 +718,11 @@ def _detect_rate_limit_hint(exc: BaseException) -> tuple[bool, float | None]:
     serialised error payload. The Gemini API returns a
     ``RetryInfo.retryDelay`` field (also surfaced in the message as
     ``Please retry in Xs``); Anthropic / OpenAI surface a
-    ``Retry-After`` header. The hint is honoured verbatim per the
-    brief; if it turns out to be a burst-limiter hint that
-    underestimates the true quota-window wait, that surfaces as the
-    next retry hitting another 429 (and the wall-clock cap protects
-    against unbounded loops).
+    ``Retry-After`` header. The hint is honoured verbatim; if it
+    turns out to be a burst-limiter hint that underestimates the
+    true quota-window wait, that surfaces as the next retry hitting
+    another 429 (and the wall-clock cap protects against unbounded
+    loops).
     """
     import re
 
@@ -792,15 +770,12 @@ def _detect_rate_limit_hint(exc: BaseException) -> tuple[bool, float | None]:
 class RetryPolicy(BaseModel):
     """Configuration for :class:`ResilientLLMClient`'s retry shape.
 
-    The default values match the bench's v0.0.29 ``_call_with_backoff``
-    heuristics: 3 total attempts, exponential backoff capped at 30s,
-    and a 5-consecutive-timeouts kill switch (kept here as
-    documentation; the resilient client surfaces the count to
-    callers via :class:`LLMCallTimeoutError` but does not itself
-    enforce a "skip the model" policy — that's a caller concern).
+    Defaults: 3 total attempts, exponential backoff capped at 30s.
+    The resilient client surfaces timeouts via
+    :class:`LLMCallTimeoutError` but does not itself enforce a
+    "skip the model" policy — that's a caller concern.
 
-    v0.0.33: default ``retryable_exceptions``
-    widened from ``(TransientLLMError,)`` to include provider-SDK
+    The default ``retryable_exceptions`` set includes provider-SDK
     transient classes for Google / Anthropic / OpenAI. SDK imports
     are conditional so the module stays importable when a provider
     SDK isn't installed.
@@ -836,7 +811,7 @@ class RetryPolicy(BaseModel):
     retryable_exceptions: tuple[type[BaseException], ...] = Field(
         default=_DEFAULT_RETRYABLE_EXCEPTIONS,
         description=(
-            "Exception types that trigger a retry. v0.0.33 default "
+            "Exception types that trigger a retry. The default "
             "includes :class:`TransientLLMError` plus provider-SDK "
             "transient classes (Google ``ResourceExhausted`` / "
             "``ServiceUnavailable`` / ``DeadlineExceeded`` / "
@@ -852,11 +827,10 @@ class RetryPolicy(BaseModel):
         default=60.0,
         ge=0.0,
         description=(
-            "v0.0.40: fixed backoff used when a "
-            "retryable exception is identified as an HTTP 429 / "
-            "rate-limit / RESOURCE_EXHAUSTED. Tuned to ride out a "
-            "per-minute token-quota window (Gemini Gemma free tier "
-            "needs ~60s to refresh). The exponential path "
+            "Fixed backoff used when a retryable exception is "
+            "identified as an HTTP 429 / rate-limit / "
+            "RESOURCE_EXHAUSTED. Tuned to ride out a per-minute "
+            "token-quota window. The exponential path "
             "(``base_delay_seconds`` / ``backoff_cap_seconds``) "
             "continues to govern non-rate-limit retries (503, "
             "timeouts, generic transient errors)."
@@ -876,26 +850,24 @@ class RetryPolicy(BaseModel):
         default=300.0,
         ge=0.0,
         description=(
-            "v0.0.40: hard ceiling on cumulative retry sleep within "
-            "a single :meth:`ResilientLLMClient.complete` call. When "
-            "the next backoff would push total sleep past this cap, "
-            "the policy gives up and re-raises the last exception "
-            "rather than continuing indefinitely. Five minutes is "
-            "enough for a few full per-minute quota windows; "
-            "production callers that can wait longer should raise "
-            "this. ``0.0`` disables the cap."
+            "Hard ceiling on cumulative retry sleep within a single "
+            ":meth:`ResilientLLMClient.complete` call. When the next "
+            "backoff would push total sleep past this cap, the "
+            "policy gives up and re-raises the last exception rather "
+            "than continuing indefinitely. Five minutes is enough "
+            "for a few full per-minute quota windows; production "
+            "callers that can wait longer should raise this. ``0.0`` "
+            "disables the cap."
         ),
     )
 
     @classmethod
     def for_ollama_cold_load(cls) -> RetryPolicy:
-        """Convenience constructor matching the bench's
-        ``ollama:`` cold-load variant — a long first-attempt window
-        so a freshly-loaded model isn't killed by the default 90s
-        timeout. The bench's resilient client uses
-        :class:`RetryPolicy` for backoff and a separate
-        ``timeout_seconds`` argument for the per-call cap; this
-        method just bumps backoff to be more patient."""
+        """Convenience constructor for the ``ollama:`` cold-load
+        variant — a long first-attempt window so a freshly-loaded
+        model isn't killed by the default 90s timeout. Bumps backoff
+        to be more patient; the per-call timeout is set separately
+        via ``timeout_seconds`` on :class:`ResilientLLMClient`."""
         return cls(
             max_attempts=3,
             base_delay_seconds=2.0,
@@ -925,9 +897,9 @@ class ResilientLLMClient:
     - Re-raises everything else immediately.
 
     Cost tracking and budget enforcement are deliberately NOT
-    handled here — they're user concerns. The bench layers a
-    separate cost-aware wrapper on top of this client to enforce
-    its $50 sweep cap and record token usage in its tracker.
+    handled here — they're caller concerns. Layer a separate
+    cost-aware wrapper on top of this client to record token usage
+    or enforce a budget cap.
     """
 
     def __init__(
@@ -971,13 +943,12 @@ class ResilientLLMClient:
     ) -> LLMResponse:
         """Run the base client's ``complete`` with timeout + retry.
 
-        v0.0.40: rate-limit-aware backoff. When a
-        retryable exception is identified as an HTTP 429 / quota-
-        exhausted, the policy uses :data:`RetryPolicy.rate_limit_backoff_seconds`
-        (default 60s + jitter) so the per-minute quota window can
-        refresh, rather than the exponential 1/2/4/30s path that
-        couldn't ride out the window. The 503 / timeout / generic
-        transient path is unchanged.
+        Rate-limit-aware backoff: when a retryable exception is
+        identified as an HTTP 429 / quota-exhausted, the policy uses
+        :data:`RetryPolicy.rate_limit_backoff_seconds` (default 60s +
+        jitter) so the per-minute quota window can refresh. The
+        503 / timeout / generic transient path uses exponential
+        backoff.
 
         Cumulative retry sleep is capped at
         :data:`RetryPolicy.total_retry_wall_clock_cap_seconds` (default

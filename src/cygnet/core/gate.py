@@ -55,16 +55,15 @@ class Gate:
     already-resolved dependencies so callers can compose differently
     in tests.
 
-    Method status as of v0.0.3:
+    Method status:
 
     - ``validate``: implemented; runs the validator chain.
     - ``gate``: implemented; runs the validator chain only (cost
       gate is :data:`None`).
     - ``get_schema``: implemented.
-    - ``estimate_cost``: NotImplementedError — lands with the cost slice.
-    - ``correct``: NotImplementedError — lands with the corrector slice.
-    - ``refresh_schema``: NotImplementedError — needs Path A
-      introspection (separate slice).
+    - ``estimate_cost``: implemented (when ``config.cost.enabled``).
+    - ``correct``: implemented (delegates to :func:`cygnet.run_correction`).
+    - ``refresh_schema``: implemented.
     """
 
     def __init__(
@@ -86,11 +85,10 @@ class Gate:
         self._cost_gate = cost_gate
         self._mirror_driver = mirror_driver
         self._corrector: Corrector = corrector if corrector is not None else NullCorrector()
-        # v0.0.31: outer refinement loop. Built once at Gate
-        # construction; ``Gate.correct`` delegates to it.
-        # v0.0.32: ``telemetry`` kwarg threads the
-        # per-LLM-call hook into the loop so consumers like the
-        # bench can attach a :class:`FileTelemetry` for per-call
+        # Outer refinement loop, built once at Gate construction;
+        # ``Gate.correct`` delegates to it. The ``telemetry`` kwarg
+        # threads the per-LLM-call hook into the loop so downstream
+        # consumers can attach a :class:`FileTelemetry` for per-call
         # JSON writes plus a ``compute_extras`` hook for cost
         # accounting.
         from cygnet.corrector.refinement_loop import (
@@ -106,12 +104,11 @@ class Gate:
         )
         self._refinement_telemetry = telemetry
         self._refinement_loop_max_attempts = refinement.max_attempts
-        # v0.0.43: self._refinement_loop is
-        # kept for backwards compatibility with any caller that
-        # reached into it directly. :meth:`Gate.correct` now
-        # delegates to :func:`cygnet.run_correction` instead. The
-        # stored RefinementLoop is built with the same components
-        # so both paths land in identical RefinementLoop.refine
+        # ``self._refinement_loop`` is kept for backwards compatibility
+        # with any caller that reached into it directly.
+        # :meth:`Gate.correct` delegates to :func:`cygnet.run_correction`
+        # instead, which is built with the same components so both
+        # paths land in identical :meth:`RefinementLoop.refine`
         # behaviour.
         self._refinement_loop = RefinementLoop(
             self._corrector,
@@ -152,8 +149,7 @@ class Gate:
           from ``Neo4jConfig``; the URI comes from
           ``ValidatorConfig.mirror_uri`` when set (the validator-level
           escape hatch that pre-dates first-class mirror config) or
-          from ``Neo4jConfig.uri`` as a fallback. This matches the
-          v0.0.8 layout.
+          from ``Neo4jConfig.uri`` as a fallback.
         - When ``config.mirror`` is populated: the Gate owns *two*
           drivers. The **mirror driver** is opened against
           ``ValidatorConfig.mirror_uri`` (required in this mode) and
@@ -496,8 +492,8 @@ class Gate:
             backends: Optional per-call override. When set, a fresh
                 chain is built for this single call from the listed
                 backends.
-            collection_mode: Optional per-call override (v0.0.25).
-                ``"short_circuit"`` matches v0.0.24 behaviour;
+            collection_mode: Optional per-call override.
+                ``"short_circuit"`` stops at the first failing backend;
                 ``"collect_all"`` runs every backend that can run on
                 the input and returns the full list of errors in
                 ``StructuralValidatorResult.all_errors``. When ``None``,
@@ -618,11 +614,10 @@ class Gate:
     ) -> RefinementResult:
         """Run the configured :class:`RefinementLoop` end-to-end.
 
-        v0.0.31: returns :class:`RefinementResult` (outer-loop output)
-        instead of the v0.0.30 :class:`CorrectorResult` (single-call
-        corrector output). The library now owns the outer refinement
-        loop — validation-failure feedback, prior-attempts assembly,
-        and max-attempts capping all happen inside this call.
+        Returns :class:`RefinementResult` (outer-loop output). The
+        library owns the outer refinement loop — validation-failure
+        feedback, prior-attempts assembly, and max-attempts capping
+        all happen inside this call.
 
         With the default :class:`NullCorrector` this still aborts on
         the first attempt — wire in a real corrector via
@@ -634,15 +629,14 @@ class Gate:
             error: The primary error to surface to the corrector. In
                 ``collect_all`` mode this is the first entry of
                 ``all_errors``.
-            all_errors: Optional full list of errors the chain found
-                (v0.0.25). When non-empty the corrector receives the
-                full list and may build a fix-all-at-once prompt.
+            all_errors: Optional full list of errors the chain found.
+                When non-empty the corrector receives the full list
+                and may build a fix-all-at-once prompt.
             conversation_history: Optional prior conversational
                 turns to fold into the prompt.
             query_id: Optional caller-supplied identifier propagated
                 into every :class:`LLMCallRecord` emitted by telemetry.
-                The bench uses this to attribute LLM calls to corpus
-                rows.
+                Used to attribute LLM calls to dataset rows.
             condition: Optional caller-supplied condition tag (e.g.
                 ``raw``, ``verbal``, ``structured``) propagated into
                 telemetry records.
@@ -651,12 +645,11 @@ class Gate:
                 production retry decorators
                 (:class:`ProtocolRetryingCorrector` outside,
                 :class:`EmptyRetryingCorrector` inside) before the
-                refinement loop runs. This is the headline-API
-                reproduction of the measured behaviour. Set
-                ``False`` to pass the configured corrector through
-                unwrapped (bring-your-own-wrapping). Same kwarg name
-                as on :func:`cygnet.run_correction` so users only
-                learn it once.
+                refinement loop runs. Set ``False`` to pass the
+                configured corrector through unwrapped
+                (bring-your-own-wrapping). Same kwarg name as on
+                :func:`cygnet.run_correction` so users only learn it
+                once.
 
         Returns:
             :class:`RefinementResult`. ``action == "refined"`` is
@@ -665,16 +658,7 @@ class Gate:
             loop produced (for echoed inputs or max-attempts
             exhaustion) — do not treat it as a success signal.
 
-        v0.0.43: delegates to
-        :func:`cygnet.run_correction` underneath. v0.0.44 (
-        Phase D): wrapping defaults to True so a default-constructed
-        ``Gate`` reproduces the measured behaviour. v0.0.43
-        had defaulted this to False to "preserve pre-v0.0.43
-        behaviour", but ``Gate.correct`` was never in the
-        measured path (the bench drove :class:`RefinementLoop`
-        directly), so there was no behaviour to preserve and the
-        previous default actively did the wrong thing for headline-
-        API users.
+        Delegates to :func:`cygnet.run_correction` underneath.
         """
         from cygnet.corrector.runner import LoopOptions, run_correction
 

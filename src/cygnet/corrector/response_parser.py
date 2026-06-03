@@ -1,14 +1,11 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 
-"""Corrector response parser v2.
+"""Corrector response parser.
 
-The v0.0.28 parser used a fenced-code-block contract with a
-3-stage heuristic walker. v0.0.30 replaces it with a JSON
-contract: the LLM is asked to return ``{"cypher": "...", "explanation"?: "..."}``,
-and the parser is just ``json.loads`` + a field check. This kills
-the "did we extract from the wrong block?" ambiguity dead: a
-failed validation under the JSON contract is always a Cypher-
-quality failure, never an extraction failure.
+The LLM is asked to return ``{"cypher": "...", "explanation"?: "..."}``,
+and the parser is just ``json.loads`` + a field check. A failed
+validation under the JSON contract is always a Cypher-quality
+failure, never an extraction failure.
 
 Four outcomes via a discriminated union:
 
@@ -17,7 +14,7 @@ Four outcomes via a discriminated union:
 - :class:`ProtocolEchoed` — JSON parsed, ``cypher`` non-empty but
   matches the input (after whitespace + keyword-case
   normalisation). The model declined to change anything. The
-  cypher is preserved so the bench can record what the model
+  cypher is preserved so callers can record what the model
   refused to refine.
 - :class:`ProtocolEmpty` — JSON parsed, ``cypher`` field present
   but empty / whitespace-only. The model's explicit "I cannot
@@ -27,13 +24,9 @@ Four outcomes via a discriminated union:
   ``cypher`` field, or wrong type. Retry-able with an escalated
   prompt.
 
-Backward compatibility: the v0.0.28 parser API
-(``parse_corrector_response``, ``ProtocolComplianceOK / Recoverable /
-Unrecoverable``) is kept as a thin shim mapping the four-outcome
-union back onto the three-outcome one. Callers that hadn't
-migrated to v2 still work; the v0.0.28 unit tests still exercise
-the underlying logic. Removal is a v0.0.31 follow-up once nothing
-still references the v1 surface.
+Kept as a thin compatibility shim over the current parser:
+``parse_corrector_response`` and the
+``ProtocolComplianceOK / Recoverable / Unrecoverable`` outcomes.
 """
 
 from __future__ import annotations
@@ -44,14 +37,14 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 __all__ = [  # noqa: RUF022 — grouped by API generation, not alphabetised
-    # v0.0.30 (current)
+    # Current API
     "ProtocolEchoed",
     "ProtocolEmpty",
     "ProtocolMalformed",
     "ProtocolOK",
     "ProtocolOutcome",
     "parse_corrector_response_v2",
-    # v0.0.28 (compat shim)
+    # Compatibility shim
     "ProtocolCompliance",
     "ProtocolComplianceOK",
     "ProtocolComplianceRecoverable",
@@ -61,7 +54,7 @@ __all__ = [  # noqa: RUF022 — grouped by API generation, not alphabetised
 
 
 # ---------------------------------------------------------------------------
-# v0.0.30 outcome types
+# Outcome types
 # ---------------------------------------------------------------------------
 
 
@@ -79,7 +72,7 @@ class ProtocolOK:
 class ProtocolEchoed:
     """JSON parsed, ``cypher`` non-empty but matches the input
     (after whitespace + keyword-case normalisation). The model
-    declined to refine. Carries the echoed cypher so the bench can
+    declined to refine. Carries the echoed cypher so callers can
     record what the model refused to change."""
 
     outcome: Literal["echoed"] = "echoed"
@@ -107,8 +100,8 @@ class ProtocolMalformed:
 
 
 ProtocolOutcome = ProtocolOK | ProtocolEchoed | ProtocolEmpty | ProtocolMalformed
-"""Discriminated union of the four v0.0.30 parser outcomes. Branch
-on the ``outcome`` literal."""
+"""Discriminated union of the four parser outcomes. Branch on the
+``outcome`` literal."""
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +173,12 @@ def _normalise_cypher_for_echo(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# v0.0.30 entry point
+# Entry point
 # ---------------------------------------------------------------------------
 
 
 def parse_corrector_response_v2(raw_text: str, input_cypher: str) -> ProtocolOutcome:
-    """Apply the v0.0.30 JSON parser to ``raw_text``.
+    """Apply the JSON parser to ``raw_text``.
 
     Args:
         raw_text: the LLM's response, ideally a JSON object but
@@ -244,20 +237,16 @@ def parse_corrector_response_v2(raw_text: str, input_cypher: str) -> ProtocolOut
 
 
 # ---------------------------------------------------------------------------
-# v0.0.28 compat shim
+# Compatibility shim
 # ---------------------------------------------------------------------------
 #
-# The v0.0.28 API (``parse_corrector_response``, ``ProtocolCompliance``)
-# is kept as a thin mapping over the v0.0.30 outcomes so callers
-# that haven't migrated still work and the v0.0.28 test suite
-# (24 parser tests + 8 retry tests) still exercises the underlying
-# logic. Removal scheduled for v0.0.31.
+# Kept as a thin mapping over the current outcomes so callers that
+# haven't migrated still work.
 
 
 @dataclass(frozen=True)
 class ProtocolComplianceOK:
-    """v0.0.28 outcome; kept as a compat shim. Use
-    :class:`ProtocolOK` for new code."""
+    """Compatibility outcome. Use :class:`ProtocolOK` for new code."""
 
     outcome: Literal["ok"] = "ok"
     extracted_cypher: str = ""
@@ -265,9 +254,9 @@ class ProtocolComplianceOK:
 
 @dataclass(frozen=True)
 class ProtocolComplianceRecoverable:
-    """v0.0.28 outcome; kept as a compat shim. Use
-    :class:`ProtocolOK` (with note in caller) or
-    :class:`ProtocolEchoed` / :class:`ProtocolEmpty` for new code."""
+    """Compatibility outcome. Use :class:`ProtocolOK` (with note in
+    caller) or :class:`ProtocolEchoed` / :class:`ProtocolEmpty` for
+    new code."""
 
     outcome: Literal["recoverable"] = "recoverable"
     reason: str = ""
@@ -276,8 +265,8 @@ class ProtocolComplianceRecoverable:
 
 @dataclass(frozen=True)
 class ProtocolComplianceUnrecoverable:
-    """v0.0.28 outcome; kept as a compat shim. Use
-    :class:`ProtocolMalformed` for new code."""
+    """Compatibility outcome. Use :class:`ProtocolMalformed` for new
+    code."""
 
     outcome: Literal["unrecoverable"] = "unrecoverable"
     reason: str = ""
@@ -286,13 +275,11 @@ class ProtocolComplianceUnrecoverable:
 ProtocolCompliance = (
     ProtocolComplianceOK | ProtocolComplianceRecoverable | ProtocolComplianceUnrecoverable
 )
-"""v0.0.28 discriminated union; kept as a compat shim."""
+"""Compatibility discriminated union."""
 
 
-# Stage-2/3 regexes from the v0.0.28 parser. Kept here so the
-# compat shim has equivalent behaviour (the v0.0.28 test suite
-# checks fenced-code-block extraction, which v0.0.30's JSON parser
-# doesn't do natively).
+# Regexes for fenced-code-block extraction, used by the
+# compatibility shim.
 _CYPHER_FENCE: Final[re.Pattern[str]] = re.compile(
     r"```cypher\s*\n(.*?)\n?```",
     re.DOTALL | re.IGNORECASE,
@@ -327,14 +314,11 @@ _RAW_CYPHER_LINE: Final[re.Pattern[str]] = re.compile(
 
 
 def parse_corrector_response(raw_text: str) -> ProtocolCompliance:
-    """v0.0.28 parser; kept as a compat shim. Use
-    :func:`parse_corrector_response_v2` for new code.
+    """Compatibility parser. Use :func:`parse_corrector_response_v2`
+    for new code.
 
-    The behaviour is unchanged from v0.0.28 — three stages
-    (non-empty / code-block extraction / plausible Cypher),
-    discriminated-union outcome with three variants. Test suites
-    written against the v0.0.28 surface still pass against this
-    function.
+    Three stages (non-empty / code-block extraction / plausible
+    Cypher) with a discriminated-union outcome of three variants.
     """
     if not raw_text or not raw_text.strip():
         return ProtocolComplianceUnrecoverable(reason="empty response")

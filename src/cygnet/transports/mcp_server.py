@@ -277,8 +277,8 @@ def _register_read_only_tools(mcp: FastMCP, gate: Gate) -> None:
             raise ToolError(
                 f"correct_cypher: 'error' argument does not match the GateError shape: {exc}"
             ) from exc
-        # v0.0.31: Gate.correct() now runs the outer refinement loop
-        # internally and returns RefinementResult. The transport's
+        # Gate.correct() runs the outer refinement loop internally
+        # and returns RefinementResult. The transport's
         # ``attempt_number`` kwarg is retained on the request shape
         # for backwards compatibility but no longer affects the
         # library call (the loop owns attempt accounting).

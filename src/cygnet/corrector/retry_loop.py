@@ -68,8 +68,7 @@ __all__ = ["RetryLoop", "RetryLoopOutcome", "StopCondition"]
 # attempt number. Returns ``True`` to stop, ``False`` to continue.
 # Type alias rather than a ``Protocol`` so any callable with the
 # right shape works without subclassing. :class:`AcceptanceCriteria`
-# satisfies this contract via its :meth:`should_stop` method
-# (Phase C reshape).
+# satisfies this contract via its :meth:`should_stop` method.
 StopCondition = "Callable[[Any, int], bool]"
 
 

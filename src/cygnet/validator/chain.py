@@ -2,12 +2,10 @@
 
 """Validator chain orchestration.
 
-Runs a sequence of validator backends in one of two collection modes
-(v0.0.25):
+Runs a sequence of validator backends in one of two collection modes:
 
 - ``short_circuit`` (default): each validator runs in order; the
-  first failure short-circuits the chain. Behaviour matches v0.0.24
-  byte-for-byte.
+  first failure short-circuits the chain.
 
 - ``collect_all``: every backend that can meaningfully run on the
   input contributes a verdict. Backends downstream of a parse failure
@@ -16,7 +14,7 @@ Runs a sequence of validator backends in one of two collection modes
   produce useful output. The collected payloads are ordered by the
   public contract: parse-category first, then by backend authority
   descending (``explain`` > ``mirror_execute`` > ``ast`` > ``builtin``).
-  ``error_payload`` always equals ``all_errors[0]`` so v0.0.24 callers
+  ``error_payload`` always equals ``all_errors[0]`` so callers
   consuming the single-error surface continue to work.
 
 The contract — each chain element must expose ``validate(query: str) ->
@@ -113,7 +111,7 @@ class ValidatorChain:
     # ------------------------------------------------------------------
 
     def _validate_short_circuit(self, query: str) -> StructuralValidatorResult:
-        """Original v0.0.24 behaviour: stop on the first failure."""
+        """Stop on the first failure."""
         for validator in self._validators:
             result = validator.validate(query)
             if not result.passed:
@@ -148,7 +146,7 @@ class ValidatorChain:
         )
 
     def _validate_collect_all(self, query: str) -> StructuralValidatorResult:
-        """Collect-all-where-possible mode (v0.0.25).
+        """Collect-all-where-possible mode.
 
         Runs each validator in chain order. If any prior validator in
         this chain run emitted a parse-category error, skips

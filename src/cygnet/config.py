@@ -37,17 +37,16 @@ __all__ = [
 
 
 ValidatorBackend = Literal["ast", "explain", "builtin", "mirror_execute"]
-"""Validator backend identifiers. The first three are part of the
-project's immutable artifact #3; ``mirror_execute`` was added in
-v0.0.23 to close the runtime-error coverage gap EXPLAIN leaves open
-(procedure-not-found, parameter-missing, type-coercion failures,
-post-``WITH`` scoping bugs). The addition is additive — older
-configurations explicitly pinning ``backends=["builtin", "ast",
-"explain"]`` still validate and behave exactly as before."""
+"""Validator backend identifiers. ``mirror_execute`` covers
+runtime-error coverage EXPLAIN leaves open (procedure-not-found,
+parameter-missing, type-coercion failures, post-``WITH`` scoping
+bugs). Older configurations explicitly pinning
+``backends=["builtin", "ast", "explain"]`` validate and behave
+exactly as before."""
 
 
 def _default_validator_backends() -> list[ValidatorBackend]:
-    """Default chain (v0.0.23): builtin → ast → explain → mirror_execute.
+    """Default chain: builtin → ast → explain → mirror_execute.
 
     Builtin is pure-Python with no I/O cost and catches obvious errors
     (unbalanced brackets, unknown labels, typo'd property names) in
@@ -59,11 +58,6 @@ def _default_validator_backends() -> list[ValidatorBackend]:
     surface without committing anything to the mirror. Each tier
     short-circuits on failure, so the expensive backends only run on
     queries that survive the cheaper ones.
-
-    The ``mirror_execute`` tier was added in v0.0.23. Users who
-    explicitly pinned ``backends=["builtin", "ast", "explain"]``
-    continue to get exactly that chain (the default expansion is
-    additive but not retroactive — only the default factory changed).
     """
     return ["builtin", "ast", "explain", "mirror_execute"]
 
@@ -141,7 +135,7 @@ class ValidatorConfig(BaseModel):
         description=(
             "Ordered chain of validator backends. Each runs in turn; the first "
             "to fail short-circuits the chain. If every backend passes, the "
-            "chain result is a pass. Default (v0.0.23) is ['builtin', 'ast', "
+            "chain result is a pass. Default is ['builtin', 'ast', "
             "'explain', 'mirror_execute']: builtin is the pure-Python fast "
             "filter, ast adds full Cypher grammar checking via "
             "libcypher-parser, explain is the authoritative Neo4j plan-time "
@@ -150,22 +144,20 @@ class ValidatorConfig(BaseModel):
             "(procedure-not-found, parameter-missing, type-coercion). Users "
             "without a mirror Neo4j should drop both 'explain' and "
             "'mirror_execute'; users without libcypher-parser binaries should "
-            "drop 'ast'. Users who pinned the v0.0.3 three-backend chain "
-            "should continue passing it explicitly — the default expansion is "
-            "not retroactive."
+            "drop 'ast'."
         ),
     )
     collection_mode: Literal["short_circuit", "collect_all"] = Field(
         default="short_circuit",
         description=(
-            "How the chain assembles results across backends (v0.0.25). "
-            "``short_circuit`` (default): run validators in order, return "
-            "the first non-pass result; matches v0.0.24 behaviour byte-for-"
-            "byte. ``collect_all``: run every backend that can run on the "
-            "input (backends downstream of a parse failure that need a "
-            "parseable query are skipped) and collect each backend's "
-            "payload into ``StructuralValidatorResult.all_errors``, ordered "
-            "by the public contract (parse-category first; then explain > "
+            "How the chain assembles results across backends. "
+            "``short_circuit`` (default): run validators in order and "
+            "return the first non-pass result. ``collect_all``: run every "
+            "backend that can run on the input (backends downstream of a "
+            "parse failure that need a parseable query are skipped) and "
+            "collect each backend's payload into "
+            "``StructuralValidatorResult.all_errors``, ordered by the "
+            "public contract (parse-category first; then explain > "
             "mirror_execute > ast > builtin). collect_all surfaces more "
             "errors per call at the cost of running every backend; "
             "short_circuit fails fast. The design rationale lives in "
@@ -449,9 +441,9 @@ class GateConfig(BaseSettings):
     refinement: RefinementConfig = Field(
         default_factory=RefinementConfig,
         description=(
-            "Outer refinement-loop parameters (v0.0.31+). Inherited "
-            "defaults match the bench's existing 3-attempt cap with "
-            "strict 'must validate, must be distinct' acceptance."
+            "Outer refinement-loop parameters. Defaults are a "
+            "3-attempt cap with strict 'must validate, must be "
+            "distinct' acceptance."
         ),
     )
     mirror: MirrorConfig | None = Field(

@@ -1,12 +1,9 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 
-"""Protocol-level and Empty-retry corrector decorators (
-Phase B, v0.0.42).
+"""Protocol-level and Empty-retry corrector decorators.
 
 These decorators compose retry behaviour on top of single-shot
-:class:`Corrector` implementations. They are the v0.0.42 home for
-the two inner-retry layers that v0.0.41's :class:`RampartCorrector`
-carried internally:
+:class:`Corrector` implementations:
 
 - :class:`ProtocolRetryingCorrector` — on
   :class:`ProtocolMalformed` from the inner corrector, retry with
@@ -21,7 +18,7 @@ carried internally:
   the inner corrector, retry once at a provider-appropriate high
   temperature. ``_temperature`` and ``_protocol_attempt`` metadata
   hints are set so the inner can pick up the new temperature and
-  emit the on-disk ``+100`` marker convention from v0.0.30.
+  emit the on-disk ``+100`` marker convention.
 
 Composition for the production wrapping::
 
@@ -34,10 +31,10 @@ Composition for the production wrapping::
         retries=2,
     )
 
-This is the wrapping that :func:`cygnet.run_correction` (Phase C)
-applies automatically. Direct callers of :class:`RampartCorrector`
-get single-shot behaviour; wrap explicitly to reproduce the
-production configuration.
+This is the wrapping that :func:`cygnet.run_correction` applies
+automatically. Direct callers of :class:`RampartCorrector` get
+single-shot behaviour; wrap explicitly to reproduce the production
+configuration.
 
 Both decorators are transparent to non-LLM-backed correctors
 (:class:`NullCorrector` produces a single abort regardless of
@@ -73,11 +70,8 @@ __all__ = ["EmptyRetryingCorrector", "ProtocolRetryingCorrector"]
 _logger = logging.getLogger("cygnet.corrector.decorators")
 
 
-# v0.0.42 default high-temperature values per provider. Mirrors the
-# pre-v0.0.42 ``_DEFAULT_HIGH_TEMP_BY_PROVIDER`` in
-# :mod:`cygnet.corrector.rampart_backed`; relocated here so the
-# decorator owns its own defaults rather than reaching into the
-# corrector it wraps.
+# Default high-temperature values per provider. The decorator owns
+# its own defaults rather than reaching into the corrector it wraps.
 _DEFAULT_HIGH_TEMP_BY_PROVIDER: Final[dict[str, float]] = {
     "anthropic": 0.7,
     "openai": 0.7,
@@ -103,7 +97,7 @@ class ProtocolRetryingCorrector:
 
     Args:
         inner: any :class:`Corrector` whose ``correct`` follows the
-            v0.0.42 unified protocol signature.
+            unified protocol signature.
         retries: how many ADDITIONAL attempts beyond the first to
             make on :class:`ProtocolMalformed` (``reason="protocol_failure"``)
             results. Default ``2`` (``protocol_retries=2``): one
@@ -190,17 +184,14 @@ class EmptyRetryingCorrector:
 
     - ``_temperature`` (default ``0.7``-``0.9`` depending on
       provider; configurable via ``high_temp_by_provider``).
-    - ``_protocol_attempt`` set to ``(current + 100)``, the v0.0.30
-      on-disk marker for "this is the high-temperature retry".
-      Preserves bench-side file-naming compatibility.
+    - ``_protocol_attempt`` set to ``(current + 100)``, the on-disk
+      marker for "this is the high-temperature retry".
 
     Args:
-        inner: any :class:`Corrector` following the v0.0.42 unified
-            protocol.
+        inner: any :class:`Corrector` following the unified protocol.
         high_temp_by_provider: per-provider temperature for the
             retry. Falls back to ``__default__`` (``0.7``) for
-            unknown providers. Defaults to the v0.0.41 values that
- measured.
+            unknown providers.
         provider: provider identifier used to look up the
             temperature value. ``None`` is treated as "unknown" and
             uses the ``__default__`` value.
@@ -250,10 +241,11 @@ class EmptyRetryingCorrector:
             self._provider or "", self._high_temp_by_provider["__default__"]
         )
         current_attempt = int(context.metadata.get("_protocol_attempt", "1"))
-        # Add +100 so the on-disk observation marker matches the
-        # v0.0.30 convention. If a nested ProtocolRetryingCorrector
-        # is wrapping this and already added an offset, preserve the
-        # logical-attempt mod 100; just bump the marker by 100.
+        # Add +100 so the on-disk observation marker identifies this
+        # call as the high-temperature retry. If a nested
+        # ProtocolRetryingCorrector is wrapping this and already
+        # added an offset, preserve the logical-attempt mod 100; just
+        # bump the marker by 100.
         new_metadata = {
             **context.metadata,
             "_protocol_attempt": str(current_attempt + 100),

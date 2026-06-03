@@ -1,20 +1,12 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 
-"""Shared outcome → :class:`CorrectorResult` helper (
-v0.0.42).
+"""Shared outcome → :class:`CorrectorResult` helper.
 
 The four parser outcomes (``ProtocolOK`` / ``ProtocolEchoed`` /
-``ProtocolEmpty`` / ``ProtocolMalformed``) map to a :class:`CorrectorResult`
-in the same way regardless of which corrector produced them. Pre-
-v0.0.42 the mapping was hand-coded in both :class:`RampartCorrector`
-and :class:`TemplateCorrector`; v0.0.42 factors it into this free
-function. Per the seam-map Decision 4, this is intentionally
-NOT a mixin or base-class method — keeping the correctors loosely
-coupled was the rationale.
-
-The function preserves the v0.0.30 outcome reasoning strings
-verbatim (per-corrector format strings) so a behaviour-preservation
-test can pin equivalence vs the pre-Phase-B implementations.
+``ProtocolEmpty`` / ``ProtocolMalformed``) map to a
+:class:`CorrectorResult` in the same way regardless of which
+corrector produced them. This is intentionally NOT a mixin or
+base-class method — keeping the correctors loosely coupled.
 """
 
 from __future__ import annotations
@@ -51,7 +43,7 @@ def outcome_to_result(
             value to propagate into the result.
         corrector_name: human-friendly class name used in the
             ``reasoning`` string (e.g. ``"RampartCorrector"`` or
-            ``"RawCorrector"``). Matches the pre-v0.0.42 wording.
+            ``"RawCorrector"``).
         protocol_attempts: how many LLM calls this corrector made
             for this single ``correct`` invocation. Default 1 —
             the unified protocol is single-shot. Decorators

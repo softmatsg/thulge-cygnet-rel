@@ -5,6 +5,16 @@ public API; semantic versioning applies once the library reaches
 v1.0. Breaking changes during the v0.0.x series are expected and
 called out explicitly per release.
 
+## v0.0.47 — Documentation cleanup
+
+Public-facing docstrings, module-level comments, and Pydantic field
+descriptions throughout :mod:`cygnet` have been scrubbed of internal
+development narrative — version-pinned change notes, references to
+internal benchmark code-names, and other artifacts that read as
+private change-log entries to a public reader. No library behavior,
+public API surface, on-disk file format, or wire protocol is changed
+by this release.
+
 ## v0.0.46 — Rel-endpoint compatibility check in the AST backend
 
 The AST backend gains a new structural check that verifies path

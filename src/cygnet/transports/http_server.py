@@ -392,8 +392,8 @@ def _register_routes(app: FastAPI, gate: Gate, *, mode: HTTPMode) -> None:
                 status_code=422,
                 detail=f"'error' does not match the GateError shape: {exc}",
             ) from exc
-        # v0.0.31: Gate.correct() owns the outer refinement loop
-        # now. ``attempt_number`` is kept on the request body for
+        # Gate.correct() owns the outer refinement loop.
+        # ``attempt_number`` is kept on the request body for
         # compatibility but no longer threaded into the library call.
         _ = body.attempt_number
         result = gate.correct(body.query, gate_error)

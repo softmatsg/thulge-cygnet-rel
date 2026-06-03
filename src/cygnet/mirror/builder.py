@@ -36,9 +36,9 @@ a ``mirror_id`` carrying a configurable prefix so the mirror is
 auditable from outside the library.
 
 Multi-label co-occurrence (e.g. Sample + Validated on a single node)
-is intentionally not modelled in v0.0.9. The current ``Schema`` model
-has no co-occurrence concept (``RelationshipType`` endpoints are
-single strings, ``labels`` is flat). The builder therefore emits one
+is intentionally not modelled. The current ``Schema`` model has no
+co-occurrence concept (``RelationshipType`` endpoints are single
+strings, ``labels`` is flat). The builder therefore emits one
 node per declared label; co-occurrence is recorded as a deferred
 schema-extension item.
 """

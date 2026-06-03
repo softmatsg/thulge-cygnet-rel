@@ -15,8 +15,8 @@ The validator chain has four tiers with distinct responsibilities:
   parse (covers the AST's subquery gap) and schema reference. Cannot
   detect uniqueness violations or type mismatches because EXPLAIN
   does not execute.
-- ``mirror_execute`` (v0.0.23): runs the query inside a rolled-back
-  transaction against the mirror. Catches runtime-only errors EXPLAIN
+- ``mirror_execute``: runs the query inside a rolled-back transaction
+  against the mirror. Catches runtime-only errors EXPLAIN
   doesn't surface: ``ProcedureNotFound``, ``ParameterMissing``,
   ``TypeError`` (implicit coercion failures), and ``SemanticError``
   (post-``WITH`` scoping bugs etc.). Same driver as ``explain``.
@@ -83,8 +83,8 @@ def build_chain(
     opens an appropriate driver automatically when either is in the
     chain.
 
-    ``config.collection_mode`` is forwarded to the chain (v0.0.25);
-    defaults to ``"short_circuit"``.
+    ``config.collection_mode`` is forwarded to the chain; defaults
+    to ``"short_circuit"``.
     """
     validators: list[StructuralValidator] = []
     for backend_name in config.backends:

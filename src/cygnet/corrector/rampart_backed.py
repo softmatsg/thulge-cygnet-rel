@@ -7,21 +7,14 @@ The :class:`RampartCorrector` is the production corrector. On each
 
 1. Rebuilds a fresh :class:`rampart.BlockRegistry` from a
    per-call subset of the shipped block library. Three subset
-   rules (v0.0.22, post-Brief-#27 prompt audit):
+   rules:
 
    - ``system.md`` is **not** loaded as a seed block; its
      content already reaches the LLM via the ``system_prompt``
-     argument to ``LLMClient.complete``. The v0.0.11 belt-and-
-     suspenders pattern that included it in both places was
-     measured against and removed — it doubled
-     ~400 tokens of identical content per call.
+     argument to ``LLMClient.complete``.
    - Only **one** error-vocab block — the one matching
-     ``error.category`` — is loaded. The other five
-     (``parse``, ``schema``, ``property``, ``constraint``,
-     ``cost``, ``empty``, minus the matching one) used to ride
-     along uselessly; they're now filtered at registration
-     time. The matching block lands at position 0 directly,
-     so no per-call promotion is needed.
+     ``error.category`` — is loaded. The matching block lands
+     at position 0 directly, so no per-call promotion is needed.
    - Schema label/relationship blocks are filtered to the
      entities the failing query actually references, plus any
      candidates the error's ``did_you_mean`` or
@@ -46,11 +39,11 @@ Any unrecoverable failure (LLM exception, RAMPART compile failure,
 missing block library) returns ``action="abort"`` with a
 descriptive ``reasoning``. The corrector never raises.
 
-RAMPART API translation (priority/position): the brief writes
-priorities in a 1-10 range; RAMPART uses ``float`` in ``[0.0, 1.0]``.
-Translation: brief "priority-10 non-evictable" -> ``priority=1.0,
+RAMPART API translation (priority/position): priorities are written
+in a 1-10 range; RAMPART uses ``float`` in ``[0.0, 1.0]``.
+Translation: "priority-10 non-evictable" -> ``priority=1.0,
 evictable=False`` (``from_files`` already pins seed blocks as
-non-evictable); brief "priority 5" -> ``priority=0.5``. Block
+non-evictable); "priority 5" -> ``priority=0.5``. Block
 ordering in the compiled prompt is determined by **position**, not
 priority — priority is only the eviction-scoring weight.
 """
@@ -86,12 +79,8 @@ if TYPE_CHECKING:
     from cygnet.corrector.llm import LLMClient
     from cygnet.models import GateError, Schema
 
-# v0.0.42: ``ObservationCallback`` moved to
-# :mod:`cygnet.corrector.telemetry` so the unified
-# :class:`Corrector` protocol can reference it without importing
-# from ``rampart_backed``. The name is re-exported below for
-# backwards compatibility with any pre-v0.0.42 caller that imported
-# it from this module.
+# Re-exported here for backwards compatibility with callers that
+# imported ``ObservationCallback`` from this module.
 from cygnet.corrector.telemetry import ObservationCallback
 
 __all__ = ["ObservationCallback", "RampartCorrector"]
@@ -110,14 +99,14 @@ def _module_logger() -> logging.Logger:
 _DEFAULT_TOKEN_BUDGET: Final[int] = 4000
 _DEFAULT_MODEL: Final[str] = "claude-sonnet-4-5"
 
-# Position constants. After the v0.0.22 prompt-density fix the matching
-# error-vocab block lands at position 0 directly (no promotion). Intent
-# goes immediately after at position 1. Schema/prior blocks append.
+# Position constants. The matching error-vocab block lands at
+# position 0 directly (no promotion). Intent goes immediately after
+# at position 1. Schema/prior blocks append.
 _INTENT_POSITION: Final[int] = 1
 
-# Priority translation from the brief's 1-10 to RAMPART's [0.0, 1.0].
-_PRIORITY_INTENT: Final[float] = 1.0  # brief "priority 10"
-_PRIORITY_SCHEMA: Final[float] = 0.5  # brief "priority 5"
+# Priority translation from the 1-10 scale to RAMPART's [0.0, 1.0].
+_PRIORITY_INTENT: Final[float] = 1.0  # "priority 10"
+_PRIORITY_SCHEMA: Final[float] = 0.5  # "priority 5"
 _PRIORITY_PRIOR: Final[float] = 0.4
 
 # Schema-entity extraction. Cypher labels and relationship types both
@@ -126,16 +115,13 @@ _PRIORITY_PRIOR: Final[float] = 0.4
 # bracket shape.
 _SCHEMA_NAME_REF: Final[re.Pattern[str]] = re.compile(r":([A-Z_][A-Za-z0-9_]*)")
 
-# NOTE: the v0.0.26 ``_CYPHER_BLOCK_PATTERN`` / ``_ANY_CODE_BLOCK_PATTERN``
-# constants and their ``_extract_*_block`` helpers were removed in
-# v0.0.28. Response parsing now lives in
-# :mod:`cygnet.corrector.response_parser` as ``parse_corrector_response``,
-# which separates protocol compliance from refinement quality. Callers
-# that imported the old constants should use the new parser instead.
+# Response parsing lives in :mod:`cygnet.corrector.response_parser`
+# as ``parse_corrector_response``, which separates protocol
+# compliance from refinement quality.
 
 
 # ---------------------------------------------------------------------------
-# Protocol-retry preamble + call-observation types (v0.0.28)
+# Protocol-retry preamble + call-observation types
 # ---------------------------------------------------------------------------
 
 
@@ -153,22 +139,13 @@ _PROTOCOL_RETRY_PREAMBLE: Final[str] = (
 """Prepended to the system prompt on a protocol-retry attempt. Keeps
 the original system prompt intact (so error-payload guidance, schema,
 and the rest of the standard contract still arrive) while giving the
-model a stricter cue about what the parser rejected the previous time.
-v0.0.30: updated for the JSON contract."""
+model a stricter cue about what the parser rejected the previous time."""
 
 
-# v0.0.31 note: the v0.0.28 ``CallObservation`` / ``CallObserver``
-# pair was removed. Per-LLM-call telemetry now flows through
-# :class:`cygnet.corrector.telemetry.LLMCallObservation` and the
-# ``on_observation`` callback parameter on :meth:`correct`. The
-# refinement loop wraps each observation in an outer
-# ``LLMCallRecord`` and forwards to the configured telemetry sink.
-
-
-# v0.0.30: per-provider high-temperature retry values. Applied on a
-# single retry after ``ProtocolEmpty`` — the model said "I cannot
-# refine" at low temperature; we try once at a creative-tier temp
-# before accepting the abort. Keys match the provider names
+# Per-provider high-temperature retry values. Applied on a single
+# retry after ``ProtocolEmpty`` — the model said "I cannot refine"
+# at low temperature; we try once at a creative-tier temp before
+# accepting the abort. Keys match the provider names
 # ``make_llm_client`` accepts. Override at the call site with
 # ``RampartCorrector(high_temp_by_provider={...})``.
 _DEFAULT_HIGH_TEMP_BY_PROVIDER: Final[dict[str, float]] = {
@@ -185,7 +162,7 @@ _DEFAULT_HIGH_TEMP_BY_PROVIDER: Final[dict[str, float]] = {
 
 
 # ---------------------------------------------------------------------------
-# V4 promotion (v0.0.41)
+# Production system prompt
 # ---------------------------------------------------------------------------
 
 V4_SYSTEM_PROMPT: Final[str] = (
@@ -202,27 +179,17 @@ V4_SYSTEM_PROMPT: Final[str] = (
     "Error: schema error: property `tagline` does not exist on `Movie`\n"
     'Output: {"cypher":"MATCH (m:Movie) WHERE m.title IS NOT NULL RETURN m.title LIMIT 1"}\n'
 )
-""" V4 — the promoted production system prompt (v0.0.41).
+"""The promoted production system prompt.
 
-Selected by the sweep across Phase 1 (n=19, 5 variants),
-Phase 2 (n=28 confirmation on Flash 3), and Step 2 (n=28 clean
-Gemma re-run after v0.0.40's 429 long-backoff removed rate-limit
-contamination). V4 lifts the worst-performing Google-family model
-(Gemini 3 Flash) by +26.1 pp prompt-following / +22.6 pp overall
-vs the prior baseline, while not regressing any of Gemini 2.5
-Flash Lite, Gemma 4 26B, or Gemma 4 31B.
-
-The promotion includes a paired change to the LLM client default
-``response_schema`` (now :data:`cygnet.corrector.llm._CYPHER_ONLY_RESPONSE_SCHEMA`)
+Paired with the LLM client default
+``response_schema`` (:data:`cygnet.corrector.llm._CYPHER_ONLY_RESPONSE_SCHEMA`)
 so the SDK's structured-output mode enforces the cypher-only
-shape. Without that pairing, Flash 3 still spends its
-``max_tokens`` budget on a stray ``explanation`` field which
-truncates the JSON mid-string.
+shape.
 
-The text is keyed in :data:`DEFAULT_PROMPT_BY_MODEL` under the
-``"default"`` key, so every model gets V4 unless explicitly
-overridden via ``RampartCorrector(prompt_by_model={...})`` with a
-model-specific entry."""
+Keyed in :data:`DEFAULT_PROMPT_BY_MODEL` under the ``"default"``
+key, so every model gets it unless explicitly overridden via
+``RampartCorrector(prompt_by_model={...})`` with a model-specific
+entry."""
 
 
 DEFAULT_PROMPT_BY_MODEL: Final[dict[str, str]] = {
@@ -230,10 +197,9 @@ DEFAULT_PROMPT_BY_MODEL: Final[dict[str, str]] = {
 }
 """Per-model system-prompt registry, shipped as
 :class:`RampartCorrector`'s default. The ``"default"`` key applies
-to every model that doesn't have its own entry. Today every Google-
-family model uses V4; the dict shape exists so future per-model
-divergence (e.g. an Anthropic-specific prompt) is a config change,
-not a code change."""
+to every model that doesn't have its own entry. The dict shape
+exists so future per-model divergence is a config change, not a
+code change."""
 
 
 # ---------------------------------------------------------------------------
@@ -256,21 +222,17 @@ class RampartCorrector:
             if the client honours per-call overrides (the shipped
             clients pin the model at construction time, so this is
             currently informational).
-        system_prompt_override: legacy single-prompt override. When
+        system_prompt_override: single-prompt override. When
             set, applied to every call regardless of model. Takes
-            precedence over ``prompt_by_model``. Kept for
-            reproducibility of pre-v0.0.41 callers; new code should
+            precedence over ``prompt_by_model``. New code should
             prefer ``prompt_by_model`` even for single-model setups.
-        prompt_by_model: per-model system-prompt registry (v0.0.41,
-            ). Keys are model identifiers (matching
-            the ``model=`` constructor argument); the ``"default"``
-            key applies when the model isn't explicitly listed.
-            ``None`` (the default) resolves to
-            :data:`DEFAULT_PROMPT_BY_MODEL`, which maps every model
-            to V4 — the promoted production prompt. Pass an empty
-            dict to opt out and fall through to ``system_prompt_override``
-            or the bundled ``system.md`` (the pre-v0.0.41
-            behaviour).
+        prompt_by_model: per-model system-prompt registry. Keys are
+            model identifiers (matching the ``model=`` constructor
+            argument); the ``"default"`` key applies when the model
+            isn't explicitly listed. ``None`` (the default) resolves
+            to :data:`DEFAULT_PROMPT_BY_MODEL`. Pass an empty dict
+            to opt out and fall through to ``system_prompt_override``
+            or the bundled ``system.md``.
     """
 
     def __init__(
@@ -289,7 +251,7 @@ class RampartCorrector:
         self._token_budget = token_budget
         self._model = model
         self._protocol_retries = max(0, protocol_retries)
-        # v0.0.30: provider identifier so the corrector can pick a
+        # Provider identifier so the corrector can pick a
         # provider-appropriate high-temperature value for the
         # ProtocolEmpty retry. ``None`` means "unknown provider";
         # the corrector falls back to the ``__default__`` entry.
@@ -298,17 +260,16 @@ class RampartCorrector:
             **_DEFAULT_HIGH_TEMP_BY_PROVIDER,
             **(high_temp_by_provider or {}),
         }
-        # v0.0.30: when True (the default), pass ``json_object=True``
-        # to ``LLMClient.complete()`` so providers with native
+        # When True (the default), pass ``json_object=True`` to
+        # ``LLMClient.complete()`` so providers with native
         # structured output enforce the JSON contract at the API
-        # level. Older callers / non-conformant LLMClient
-        # implementations can set this False; the parser still
-        # accepts fence-wrapped or prose-wrapped JSON either way.
+        # level. The parser still accepts fence-wrapped or
+        # prose-wrapped JSON either way.
         self._request_json_object = request_json_object
         self._blocks_root = _resolve_blocks_root()
-        # v0.0.41: the prompt_by_model registry is
-        # the new shipped mechanism; system_prompt_override remains
-        # as a single-prompt legacy escape hatch.
+        # ``prompt_by_model`` is the shipped mechanism;
+        # ``system_prompt_override`` remains as a single-prompt
+        # escape hatch.
         self._prompt_by_model: dict[str, str] = (
             DEFAULT_PROMPT_BY_MODEL if prompt_by_model is None else dict(prompt_by_model)
         )
@@ -332,12 +293,12 @@ class RampartCorrector:
 
         Order (first hit wins):
 
-        1. ``system_prompt_override`` — legacy single-prompt escape
-           hatch. Applied to every model.
+        1. ``system_prompt_override`` — single-prompt escape hatch.
+           Applied to every model.
         2. ``prompt_by_model[self._model]`` — explicit per-model
            entry.
         3. ``prompt_by_model["default"]`` — registry default.
-        4. Bundled ``system.md`` — pre-v0.0.41 fallback.
+        4. Bundled ``system.md`` — final fallback.
         """
         if self._system_prompt_override is not None:
             return self._system_prompt_override
@@ -361,17 +322,15 @@ class RampartCorrector:
     ) -> CorrectorResult:
         """Single LLM call → parse → :class:`CorrectorResult`.
 
-        v0.0.42: strictly single-shot. The pre-
-        v0.0.42 in-class protocol-retry loop (re-prompt on
-        :class:`ProtocolMalformed` with an escalated system-prompt
-        preamble) and one-shot high-temperature retry on
-        :class:`ProtocolEmpty` are factored out into the
+        Strictly single-shot. The protocol-retry loop (re-prompt
+        on :class:`ProtocolMalformed` with an escalated
+        system-prompt preamble) and one-shot high-temperature
+        retry on :class:`ProtocolEmpty` are factored out into the
         composable :class:`ProtocolRetryingCorrector` and
         :class:`EmptyRetryingCorrector` decorators in
         :mod:`cygnet.corrector.decorators`.
 
-        To preserve the behaviour, the production wrapping
-        is::
+        The production wrapping is::
 
             ProtocolRetryingCorrector(
                 EmptyRetryingCorrector(
@@ -382,23 +341,21 @@ class RampartCorrector:
                 retries=2,
             )
 
-        The convenience :func:`cygnet.run_correction` (Phase C)
-        applies this wrapping automatically by default. Users
-        calling :class:`RampartCorrector` directly get bare single-
-        shot behaviour; wrap explicitly for the
-        configuration.
+        The convenience :func:`cygnet.run_correction` applies this
+        wrapping automatically by default. Users calling
+        :class:`RampartCorrector` directly get bare single-shot
+        behaviour; wrap explicitly for the production configuration.
 
         Metadata hints the decorators set, which this method reads
         from :attr:`CorrectorContext.metadata`:
 
         - ``_protocol_attempt`` (``int`` as str, default ``"1"``):
           the on-disk observation marker. Values >= 100 indicate a
-          high-temperature retry (the +100 convention from
-          v0.0.30); the logical attempt count is
-          ``value % 100``. The system-prompt preamble is prepended
-          when ``value % 100 > 1`` (i.e. on every non-first
-          protocol attempt, including the high-temp retry of a
-          non-first protocol attempt).
+          high-temperature retry (the +100 convention); the logical
+          attempt count is ``value % 100``. The system-prompt
+          preamble is prepended when ``value % 100 > 1`` (i.e. on
+          every non-first protocol attempt, including the
+          high-temp retry of a non-first protocol attempt).
         - ``_temperature`` (``float`` as str, default ``"0.1"``):
           the temperature override for this call. The
           :class:`EmptyRetryingCorrector` decorator sets it to a
@@ -409,12 +366,12 @@ class RampartCorrector:
         are returned on the :class:`CorrectorResult`. Decorators
         override these fields when wrapping multiple calls.
         """
-        # v0.0.25: when the gate ran in collect_all mode,
-        # ``context.all_errors`` carries the full set the LLM should
-        # fix in one shot. Deduplicate by category so two backends
-        # naming the same problem twice don't double-bill the block
-        # budget while preserving both phrasings in the intent block.
-        # Single-error callers leave ``all_errors`` empty.
+        # When the gate ran in collect_all mode, ``context.all_errors``
+        # carries the full set the LLM should fix in one shot.
+        # Deduplicate by category so two backends naming the same
+        # problem twice don't double-bill the block budget while
+        # preserving both phrasings in the intent block. Single-error
+        # callers leave ``all_errors`` empty.
         errors: list[GateError] = list(context.all_errors) if context.all_errors else [error]
         categories: list[str] = []
         seen_categories: set[str] = set()
@@ -472,10 +429,7 @@ class RampartCorrector:
         raises. Centralises the registry compile + observation emit
         so the retry loop in :meth:`correct` stays linear.
 
-        v0.0.30: the temperature is a parameter so the high-temp
-        retry path can call this with the creative-tier value.
-
-        v0.0.31: emits :class:`LLMCallObservation` records to the
+        Emits :class:`LLMCallObservation` records to the
         ``on_observation`` callback. The callback is supplied by
         :class:`RefinementLoop` (or a direct caller); when ``None``,
         no observations are emitted.
@@ -543,7 +497,7 @@ class RampartCorrector:
         return outcome
 
     # ------------------------------------------------------------------
-    # Per-call observation hook (v0.0.31)
+    # Per-call observation hook
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -605,8 +559,7 @@ class RampartCorrector:
         ``"property"`` / ``"constraint"`` / ``"cost"`` /
         ``"empty"``), values are the on-disk paths to the matching
         ``.md`` block. Only the matching block gets loaded into the
-        registry per call ( fix 2 — the other five used to
-        be loaded uselessly).
+        registry per call.
         """
         out: dict[str, Path] = {}
         error_vocab_dir = self._blocks_root / "error_vocab"
@@ -644,14 +597,13 @@ class RampartCorrector:
         from rampart import BlockRegistry
 
         vocab_paths: list[Path] = []
-        # Load one error-vocab block per distinct failing category
-        # (v0.0.25). For single-error callers ``error_categories`` is a
-        # one-element list and we load the same one block as v0.0.24;
-        # for collect_all callers we load each category's block in the
-        # order the chain produced them (parse first, then by backend
-        # authority — see ``ValidatorChain._validate_collect_all``).
-        # Unknown categories (future CYGNET versions) are silently
-        # skipped — the intent block still carries the full payloads.
+        # Load one error-vocab block per distinct failing category.
+        # For collect_all callers each category's block is loaded in
+        # the order the chain produced them (parse first, then by
+        # backend authority — see
+        # ``ValidatorChain._validate_collect_all``). Unknown categories
+        # are silently skipped — the intent block still carries the
+        # full payloads.
         for category in error_categories:
             matching = self._error_vocab_paths.get(category)
             if matching is not None:
@@ -675,7 +627,7 @@ class RampartCorrector:
         matching error-vocab block(s) so it survives even when the
         token budget can't fit the pattern library at the tail.
 
-        Final layout (v0.0.25, extended from)::
+        Final layout::
 
             0..k-1: matching error_vocab blocks (seed; one per distinct
                     failing category in collect_all mode, one in
@@ -689,11 +641,9 @@ class RampartCorrector:
             ...:    pattern seeds
         """
         trajectory = f"attempt_{context.attempt_number}"
-        # In v0.0.24 the intent block sat at position 1 immediately
-        # after the single error-vocab block. In v0.0.25 collect_all
-        # mode there may be more than one vocab block at the head, so
-        # the intent position shifts to the first slot after all the
-        # vocab seeds. Pattern seeds are loaded after vocab in
+        # In collect_all mode there may be more than one vocab block
+        # at the head, so the intent position is the first slot after
+        # all the vocab seeds. Pattern seeds are loaded after vocab in
         # ``_build_registry`` so they get pushed to the tail as agent
         # blocks fill in here.
         cursor = vocab_block_count
@@ -790,10 +740,9 @@ class RampartCorrector:
 def _format_intent(query: str, errors: list[GateError], attempt_number: int) -> str:
     """Render the intent block.
 
-    Delegates to :mod:`cygnet.corrector.renderers` so the bench
+    Delegates to :mod:`cygnet.corrector.renderers` so downstream
     runners can reuse the same renderer for their structured-style
-    prior-attempt blocks. v0.0.30 refactor; behaviour unchanged from
-    v0.0.25.
+    prior-attempt blocks.
     """
     if len(errors) == 1:
         return render_gate_error_block(
@@ -839,10 +788,9 @@ def _format_prior_attempt(attempt: object, index: int) -> str:
     """Render a single prior-attempt entry for the prompt.
 
     The error-bearing path delegates to
-    :func:`cygnet.corrector.renderers.render_gate_error_block` (shared
-    with the bench's structured-style conditions). The "passed
-    gating" path stays inline — it's a single conditional line that
-    doesn't reuse anywhere else.
+    :func:`cygnet.corrector.renderers.render_gate_error_block`.
+    The "passed gating" path stays inline — it's a single
+    conditional line that doesn't reuse anywhere else.
     """
     if attempt.error is None:  # type: ignore[attr-defined]
         return (
@@ -902,8 +850,7 @@ def _relevant_schema_entities(
     4. **Fallback.** When steps 1-3 produce an empty label set
        (e.g. ``MATCH (n) RETURN n`` references no specific labels and
        no schema error fires), return the full schema. The LLM needs
-       *some* schema context; the all-bets-off case is the brief's
-       conservative-defaults instruction.
+       *some* schema context.
 
     Note the asymmetry: rels expand from labels (step 3), but
     endpoint labels of those rels do **not** further expand the
@@ -950,8 +897,8 @@ def _relevant_schema_entities(
         # kind == "property": handled by step 1 + the bound label
 
     # Step 3: include rels touching any relevant label. We do NOT
-    # cascade further to add the rel's endpoint labels — the brief's
-    # "conservative" intent stops at one hop. The rel block's body
+    # cascade further to add the rel's endpoint labels — the
+    # conservative intent stops at one hop. The rel block's body
     # already lists the endpoint labels in prose, so the LLM knows
     # what's reachable without paying for full label schemas of
     # everything one hop away.
@@ -965,15 +912,6 @@ def _relevant_schema_entities(
         relevant_rels = set(declared_rels)
 
     return relevant_labels, relevant_rels
-
-
-# NOTE: response-parser helpers (``_extract_cypher_block`` /
-# ``_extract_any_code_block``) were removed in v0.0.28. Use
-# :func:`cygnet.corrector.response_parser.parse_corrector_response`
-# instead. The new parser settles protocol compliance with a
-# three-stage discriminated-union outcome rather than two boolean
-# fallbacks; the caller branches on ``outcome`` in {``ok``,
-# ``recoverable``, ``unrecoverable``}.
 
 
 # ---------------------------------------------------------------------------

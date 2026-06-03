@@ -108,11 +108,11 @@ class CorrectorContext(BaseModel):
         default_factory=list,
         description=(
             "All errors the chain found, when ``collect_all`` mode was "
-            "active (v0.0.25). Empty list otherwise. The primary "
-            "``error`` parameter on :meth:`Corrector.correct` is the "
-            "first of these for backwards compatibility; multi-error-"
-            "aware correctors (e.g. :class:`RampartCorrector`) consume "
-            "the full list when non-empty to build fix-all-at-once "
+            "active. Empty list otherwise. The primary ``error`` "
+            "parameter on :meth:`Corrector.correct` is the first of "
+            "these for backwards compatibility; multi-error-aware "
+            "correctors (e.g. :class:`RampartCorrector`) consume the "
+            "full list when non-empty to build fix-all-at-once "
             "prompts. Single-error callers and short-circuit-mode "
             "callers leave this empty."
         ),
@@ -128,12 +128,9 @@ class Corrector(Protocol):
     Marked ``runtime_checkable`` so users can verify conformance via
     ``isinstance(my_corrector, Corrector)``.
 
-    v0.0.42: the ``on_observation`` callback is
-    a first-class kwarg of the protocol. Pre-v0.0.42, only some
-    correctors accepted it and :class:`RefinementLoop` feature-
-    detected via ``inspect.signature``. Lifting it removes the
-    feature-detection. Correctors that don't emit observations
-    (notably :class:`NullCorrector`) accept the kwarg and ignore it.
+    The ``on_observation`` callback is a first-class kwarg of the
+    protocol. Correctors that don't emit observations (notably
+    :class:`NullCorrector`) accept the kwarg and ignore it.
 
     The protocol is **single-shot**: one ``correct`` call returns
     one :class:`CorrectorResult` for one ``(query, error)`` pair. No

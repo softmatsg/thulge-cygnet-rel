@@ -15,26 +15,18 @@ prompts via string concatenation rather than RAMPART block compilation:
   schema section is alphabetically clipped to fit under
   ``token_budget``.
 
-Relocated from ``benchmarks/benchmarks/infrastructure/template_corrector.py``
-into the library in v0.0.42 They are real
-shippable correctors implementing the unified single-shot
-:class:`Corrector` protocol, not bench-only artefacts. Whether
-NaiveFull and NaiveTruncated are competitive with RAMPART is a
-measurement question, not a labelling one.
-
 All four are **strictly single-shot** — one LLM call per
 :meth:`correct` invocation, no internal retry. Protocol-level
 retry on malformed JSON and Empty-cypher high-temperature retry
 are composed externally via
 :class:`cygnet.corrector.decorators.ProtocolRetryingCorrector` and
 :class:`cygnet.corrector.decorators.EmptyRetryingCorrector`
-respectively. This matches the bare behaviour of these correctors
-under (they had no internal retry there either).
+respectively.
 
 The shared outcome → :class:`CorrectorResult` dispatch is factored
-into :func:`cygnet.corrector._outcome_helpers.outcome_to_result`
-(v0.0.42); this module imports the helper rather than carrying its
-own copy of the four-branch logic.
+into :func:`cygnet.corrector._outcome_helpers.outcome_to_result`;
+this module imports the helper rather than carrying its own copy
+of the four-branch logic.
 """
 
 from __future__ import annotations
@@ -72,10 +64,9 @@ _logger = logging.getLogger("cygnet.corrector.template")
 _JSON_OUTPUT_TAIL: Final[str] = 'Return a JSON object: `{"cypher": "<corrected query>"}`.'
 
 
-# Shared system prompt for the direct-call template correctors. Same
-# wording as the pre-v0.0.42 bench-side ``_SHARED_SYSTEM_PROMPT``. The
-# RAMPART corrector uses its own system prompt (v0.0.41
-# :data:`cygnet.corrector.rampart_backed.V4_SYSTEM_PROMPT` via the
+# Shared system prompt for the direct-call template correctors. The
+# RAMPART corrector uses its own system prompt
+# (:data:`cygnet.corrector.rampart_backed.V4_SYSTEM_PROMPT` via the
 # ``DEFAULT_PROMPT_BY_MODEL`` registry).
 _SHARED_SYSTEM_PROMPT: Final[str] = (
     "You are an expert Cypher query writer working against a Neo4j "
@@ -121,15 +112,14 @@ class TemplateCorrector(Corrector, ABC):
         schema: the active gate schema; passed to
             ``_build_initial_prompt``.
         system_prompt: the system prompt sent on every call.
-            Defaults to the v0.0.42 :data:`_SHARED_SYSTEM_PROMPT`.
+            Defaults to :data:`_SHARED_SYSTEM_PROMPT`.
         user_prompt_tail: the closing instruction line appended to
             the subclass's initial prompt. Defaults to
             :data:`_JSON_OUTPUT_TAIL`.
         request_json_object: whether to pass ``json_object=True``
-            to :meth:`LLMClient.complete`. Defaults to True (the
-            v0.0.30 contract). False is for the V5
-            raw-Cypher experiment; the standard parser then marks
-            non-JSON responses ``ProtocolMalformed``.
+            to :meth:`LLMClient.complete`. Defaults to True. When
+            False, the standard parser marks non-JSON responses
+            ``ProtocolMalformed``.
         provider: provider name; populates
             :class:`LLMCallObservation.provider` when the LLM
             client doesn't expose its own ``provider`` attribute.
@@ -176,7 +166,7 @@ class TemplateCorrector(Corrector, ABC):
         attempt_index: int,
     ) -> str:
         """Corrector-specific prior-attempt block. ``attempt_index``
-        is 1-based, matching v0.0.30's ``Attempt N:`` format."""
+        is 1-based, matching the ``Attempt N:`` format."""
 
     # ------------------------------------------------------------------
     # Corrector protocol implementation
@@ -354,8 +344,7 @@ def _construct_raw_error_string(error: GateError) -> str:
     For errors CYGNET catches before Neo4j sees them (parse / schema
     / property / constraint / cost / empty), the rendering is
     synthesised to look like what Neo4j's parser or planner would
-    emit. Documented as a methodological caveat in the bench's
-    implications doc.
+    emit.
     """
     payload = error.payload
     category = error.category
@@ -543,8 +532,7 @@ class RawCorrector(TemplateCorrector):
     """Neo4j-style raw error string + flat schema summary + broken
     query. Minimal-information baseline.
 
- bench04 ``"raw"`` condition. Single-shot per the unified
-    v0.0.42 protocol — no internal retry."""
+    Single-shot per the unified protocol — no internal retry."""
 
     def _build_initial_prompt(
         self,
@@ -585,9 +573,8 @@ class VerbalCorrector(TemplateCorrector):
     """Prose translation of the structured error + flat schema
     summary. MAC-SQL-style baseline.
 
- bench04 ``"verbal"`` condition. Same factual content as
-    RAMPART's structured payload, sentence-rendered. Single-shot per
-    the unified v0.0.42 protocol."""
+    Same factual content as RAMPART's structured payload,
+    sentence-rendered. Single-shot per the unified protocol."""
 
     def _build_initial_prompt(
         self,
@@ -622,9 +609,8 @@ class VerbalCorrector(TemplateCorrector):
 class NaiveFullCorrector(TemplateCorrector):
     """Full schema dump + full JSON error payload + broken query.
 
- bench05 ``"naive_full"`` condition. The unbounded
-    strawman — no relevance gating, no priority, no truncation.
-    Single-shot per the unified v0.0.42 protocol."""
+    The unbounded strawman — no relevance gating, no priority, no
+    truncation. Single-shot per the unified protocol."""
 
     def _build_initial_prompt(
         self,
@@ -655,7 +641,7 @@ class NaiveFullCorrector(TemplateCorrector):
     ) -> str:
         # Full-payload conditions render prior attempts with the
         # shared library renderer so the on-disk shape matches the
-        # corrector-mediated conditions.
+        # other conditions.
         from cygnet.corrector.renderers import render_gate_error_block
 
         return render_gate_error_block(
@@ -670,10 +656,9 @@ class NaiveTruncatedCorrector(TemplateCorrector):
     """Same as :class:`NaiveFullCorrector` but the schema section is
     alphabetically clipped to fit under ``token_budget``.
 
- bench05 ``"naive_truncated"`` condition. Prior-attempts
-    are rendered AFTER the truncated schema and are NOT counted
-    against the truncation budget. Single-shot per the unified
-    v0.0.42 protocol."""
+    Prior-attempts are rendered AFTER the truncated schema and are
+    NOT counted against the truncation budget. Single-shot per the
+    unified protocol."""
 
     def __init__(
         self,
@@ -731,8 +716,7 @@ class NaiveTruncatedCorrector(TemplateCorrector):
         attempt_index: int,
     ) -> str:
         # Prior-attempts deliberately bypass the truncation budget
-        # — they're high-signal, low-volume, and the v0.0.30
-        # experimental design pinned this semantics.
+        # — they're high-signal and low-volume.
         from cygnet.corrector.renderers import render_gate_error_block
 
         return render_gate_error_block(

@@ -1,15 +1,12 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 
-"""Dev-time Neo4j container lifecycle management
-.
+"""Dev-time Neo4j container lifecycle management.
 
-Wraps the bundled :file:`docker-compose.yml` so library tests,
-benchmarks, and demo notebooks can start a fresh Neo4j 5 + APOC
-instance, load a dataset, exercise the gate, and tear down — all
-from a single ``with Phase1Neo4j()`` block. Pre-v0.0.42 this lived
-under :mod:`benchmarks.benchmarks.infrastructure.neo4j_lifecycle`;
-the relocation breaks the library-QA-scripts-reach-into-bench-
-package coupling that the seam-map flagged.
+Wraps the bundled :file:`docker-compose.yml` so library tests and
+demo notebooks can start a fresh Neo4j 5 + APOC instance, load a
+dataset, exercise the gate, and tear down — all from a single
+``with Phase1Neo4j()`` block. Kept as a public utility so external
+callers don't need to vendor it.
 
 Designed to coexist with the integration-test container in
 ``tests/integration/`` (port 7688): this container binds bolt to
@@ -27,10 +24,8 @@ dev-time scaffolding, NOT part of the production API surface
 — see :mod:`cygnet.dev`'s docstring.
 
 ``load_dataset`` accepts a callable so callers can plug in their
-own loaders without entangling :mod:`cygnet.dev` with bench-side
-dataset code. The benchmark suite ships a thin wrapper
-(:mod:`benchmarks.infrastructure.neo4j_lifecycle`) that pre-binds
-the bench's recommendations loaders.
+own loaders without entangling :mod:`cygnet.dev` with downstream
+dataset code.
 """
 
 from __future__ import annotations
@@ -64,9 +59,7 @@ class DatasetLoader(Protocol):
     :meth:`Phase1Neo4j.load_dataset`.
 
     A loader is a callable taking the live Neo4j driver and the
-    target database (as a keyword-only argument, matching the
-    project convention used by
-    :mod:`benchmarks.datasets.recommendations`) and returning the
+    target database (as a keyword-only argument) and returning the
     post-load node count."""
 
     def __call__(self, driver: Driver, *, database: str = "neo4j") -> int: ...
@@ -253,9 +246,8 @@ class Phase1Neo4j:
         """Apply a schema spec's constraints and indexes to the
         container, returning the loaded :class:`cygnet.Schema`.
 
-        Mirrors the behaviour of the integration test suite's
-        ``loaded_schema_fixture`` so callers can drop a schema spec
-        in and get a ready-to-validate-against graph.
+        Callers can drop a schema spec in and get a ready-to-validate-
+        against graph.
         """
         from cygnet.schema import load_schema_spec
 
@@ -291,26 +283,18 @@ class Phase1Neo4j:
         """Invoke a caller-supplied dataset loader and return the
         post-load node count.
 
-        v0.0.42: the loader is now an injected callable rather than a
-        baked-in dispatch table. Pre-v0.0.42 the bench-internal
-        ``Phase1Neo4j.load_dataset(name)`` knew about specific
-        recommendations datasets; relocating into ``cygnet.dev``
-        broke that coupling. Callers now pass their own loader:
+        Callers pass their own loader::
 
-            from benchmarks.datasets.recommendations import load_smoke_seed
-
-            n = neo.load_dataset(load_smoke_seed)
+            n = neo.load_dataset(my_loader)
 
         Args:
             loader: callable taking ``(driver, *, database="neo4j")``
                 and returning the post-load node count. The driver
                 is this instance's cached one; the database is
-                :attr:`database` (``"neo4j"`` by default). v0.0.45
-                corrected the call site to pass ``database`` as a
-                keyword argument so loaders with keyword-only
-                ``database`` (the project convention — see
-                :mod:`benchmarks.datasets.recommendations`) work
-                without a positional/keyword mismatch.
+                :attr:`database` (``"neo4j"`` by default).
+                ``database`` is passed as a keyword argument so
+                loaders with keyword-only ``database`` work without
+                a positional/keyword mismatch.
 
         Returns:
             The integer return value of ``loader``.

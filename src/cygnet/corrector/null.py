@@ -38,7 +38,7 @@ _REASONING: str = (
 class NullCorrector:
     """Reference Corrector implementation. Returns ``action='abort'``.
 
-    Accepts ``on_observation`` (per the v0.0.42 unified protocol) and
+    Accepts ``on_observation`` (per the unified protocol) and
     ignores it — :class:`NullCorrector` makes no LLM calls and has
     nothing to emit."""
 

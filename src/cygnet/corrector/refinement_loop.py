@@ -6,8 +6,7 @@ The corrector's :meth:`Corrector.correct` returns a single refined
 Cypher (or an abort) for one ``(query, error)`` pair. It does NOT
 run the validator chain on the result; it does NOT decide whether
 to retry with a new error if the result still fails. Those are
-*outer-loop* concerns. v0.0.30 left them to the caller; v0.0.31
-moves them into the library as :class:`RefinementLoop`.
+*outer-loop* concerns, handled by :class:`RefinementLoop`.
 
 End-to-end refinement, in one call:
 
@@ -46,9 +45,9 @@ constructs a ``RefinementLoop`` in :meth:`Gate.__init__` from
 its existing corrector + chain and delegates :meth:`Gate.correct`
 to it.
 
-The corrector's internal :class:`CorrectorResult` (v0.0.30) is
-kept as the corrector's return type. The loop wraps its
-sequence of :class:`CorrectorResult` outputs into a single
+The corrector's internal :class:`CorrectorResult` is kept as the
+corrector's return type. The loop wraps its sequence of
+:class:`CorrectorResult` outputs into a single
 :class:`RefinementResult` that callers consume.
 """
 
@@ -123,9 +122,8 @@ class AcceptanceCriteria(BaseModel):
             "query unchanged after whitespace + keyword-case "
             "normalisation) is treated as an abort. The corrector "
             "marks these as ``action='abort', reason='model_echoed_input'``; "
-            "callers that explicitly want to keep echoed cypher "
-            "(e.g. a research bench studying refusal modes) can set "
-            "this False."
+            "callers that explicitly want to keep echoed cypher can "
+            "set this False."
         ),
     )
     backends: list[str] | None = Field(
@@ -204,10 +202,9 @@ class RefinementAttempt(BaseModel):
         description=(
             "Sum of prompt tokens across every LLM call this attempt "
             "made — including the corrector's internal protocol "
-            "retries and the high-temperature retry. v0.0.32: "
-            "aggregated by the loop from each "
-            ":class:`LLMCallObservation` so consumers don't need a "
-            "side-band token-counting fold."
+            "retries and the high-temperature retry. Aggregated by "
+            "the loop from each :class:`LLMCallObservation` so "
+            "consumers don't need a side-band token-counting fold."
         ),
     )
     output_tokens: int = Field(
@@ -216,7 +213,7 @@ class RefinementAttempt(BaseModel):
         description=(
             "Sum of output tokens across every LLM call this attempt "
             "made (includes any reasoning tokens reported by thinking "
-            "models). v0.0.32: aggregated by the loop."
+            "models). Aggregated by the loop."
         ),
     )
 
@@ -228,8 +225,7 @@ class RefinementResult(BaseModel):
     Carries the final verdict, the refined cypher (if any), and a
     full chronological history of attempts. Token counts are
     available per-attempt via the telemetry hook; total cost is a
-    consumer concern (the bench's cost-aware client wrapper
-    records to its own tracker).
+    consumer concern.
 
     .. important::
        ``refined_query`` is NOT a success signal. The field may
@@ -340,12 +336,6 @@ class RefinementLoop:
         self._max_attempts = max_attempts
         self._acceptance = acceptance or AcceptanceCriteria()
         self._telemetry: CorrectorTelemetry = telemetry or NullTelemetry()
-        # v0.0.42: the ``Corrector`` protocol
-        # has ``on_observation`` as a first-class kwarg, so the
-        # loop unconditionally threads the callback through. The
-        # pre-v0.0.42 ``inspect.signature`` feature-detection
-        # (``_detect_observation_support`` + the
-        # ``_corrector_supports_observation`` cache) is gone.
 
     # ------------------------------------------------------------------
     # Public API
@@ -363,17 +353,14 @@ class RefinementLoop:
     ) -> RefinementResult:
         """Run the outer refinement loop for one ``(query, error)``.
 
-        v0.0.43: the iteration mechanics live in
+        The iteration mechanics live in
         :class:`cygnet.corrector.retry_loop.RetryLoop`. This method
         owns the correction-specific state (the closure over
         ``prior_attempts`` / ``current_query`` / ``current_error``
         / token aggregation) and the correction-specific stop
         condition (combines :class:`AcceptanceCriteria` with
         intrinsic-abort logic), then delegates the iteration to
-        :class:`RetryLoop`. Behaviour is preserved bit-for-bit vs
-        the pre-v0.0.43 in-class iteration; see
-        ``tests/unit/test_refinement_behaviour_equivalence.py`` for
-        the pinning fixture.
+        :class:`RetryLoop`.
         """
         # State accumulated across iterations. The work closure
         # mutates these; the stop condition reads the most recent
@@ -629,13 +616,7 @@ class RefinementLoop:
         context: CorrectorContext,
         on_observation: ObservationCallback,
     ) -> CorrectorResult:
-        """Call the corrector, threading the observation callback.
-
-        v0.0.42: the protocol's ``on_observation``
-        kwarg is now first-class on every :class:`Corrector`
-        implementation, so the loop passes the callback
-        unconditionally. The pre-v0.0.42 ``inspect.signature``
-        feature-detection is gone."""
+        """Call the corrector, threading the observation callback."""
         return self._corrector.correct(
             query,
             error,

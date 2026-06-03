@@ -1,16 +1,14 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 #
-# Phase 1 Neo4j container for the benchmark suite. Distinct from the
+# Neo4j container for dev-time use. Distinct from the
 # integration-test container in tests/integration/docker-compose.yml
 # (port 7688) so both can run in parallel during dev:
 #
 #   - tests/integration/docker-compose.yml   bolt :7688   ephemeral
-#   - benchmarks/.../docker-compose.yml      bolt :7689   persistent volume
+#   - this file                              bolt :7689   persistent volume
 #
-# Heap sized generously for Phase 1 (1G initial, 2G max) so the full
-# recommendations dataset (~40K nodes) loads cleanly. APOC plugin
-# enabled so the schema introspection path matches what the library
-# expects when [explain] / introspect modes are exercised.
+# Heap sized for ~40K-node datasets. APOC plugin enabled so the
+# schema introspection path can use APOC procedures when available.
 
 services:
   neo4j:

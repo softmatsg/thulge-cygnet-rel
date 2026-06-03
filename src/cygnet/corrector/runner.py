@@ -6,9 +6,6 @@ path.
 :func:`run_correction` wires a corrector, the generic
 :class:`RetryLoop`, and an :class:`AcceptanceCriteria` together
 with defaults that reproduce the production configuration.
-The configuration that produces the paper's corrector results is
-the library's default — no notebook-only behaviour, no separate
-"bench wiring" path.
 
 User-facing surface::
 
@@ -31,13 +28,12 @@ Defaults:
   default). Set ``loop=False`` for a single corrector call.
 - ``apply_default_wrapping=True`` — wrap the supplied corrector
   with :class:`EmptyRetryingCorrector` and
-  :class:`ProtocolRetryingCorrector` per the
-  always-wrap policy. For the four template correctors the
-  wrapping is a no-op; for :class:`RampartCorrector` it
-  reproduces the pre-v0.0.42 in-class retry behaviour
-  measured. Set ``False`` to opt out (single-shot corrector,
-  caller manages retry).
-- ``acceptance=AcceptanceCriteria()`` — the v0.0.31 default
+  :class:`ProtocolRetryingCorrector` per the always-wrap policy.
+  For the four template correctors the wrapping is a no-op; for
+  :class:`RampartCorrector` it adds the protocol retry behaviour.
+  Set ``False`` to opt out (single-shot corrector, caller manages
+  retry).
+- ``acceptance=AcceptanceCriteria()`` — the default
   (``require_validates=True, require_distinct_from_input=True``).
 - ``telemetry=NullTelemetry()`` — discard observations. Pass a
   :class:`FileTelemetry` to write per-call JSON.
@@ -48,10 +44,9 @@ The bring-your-own-loop path is two-fold:
   :class:`RefinementResult` with a single-attempt history. Use
   when the caller wants to drive iteration themselves.
 - Calling a corrector's ``correct`` directly is also fine — the
-  v0.0.42 unified protocol is single-shot, so callers don't have
-  to use :func:`run_correction` at all if they want bare
-  primitives. :func:`run_correction` is the convenience for the
-  common case.
+  unified protocol is single-shot, so callers don't have to use
+  :func:`run_correction` at all. :func:`run_correction` is the
+  convenience for the common case.
 """
 
 from __future__ import annotations
@@ -113,17 +108,14 @@ def apply_default_wrapping(
     high_temp_by_provider: dict[str, float] | None = None,
     protocol_retries: int = 2,
 ) -> Corrector:
-    """Wrap a corrector with the production retry
-    decorators.
+    """Wrap a corrector with the production retry decorators.
 
     Returns ``ProtocolRetryingCorrector(EmptyRetryingCorrector(corrector,
     high_temp_by_provider=..., provider=...), retries=protocol_retries)``.
 
-    Per the seam-map Decision 2 + the Phase B confirmation:
-    the wrapping is unconditional. For :class:`RampartCorrector`
-    the wrapped form reproduces the pre-v0.0.42 in-class
-    ``protocol_retries=2`` behaviour measured. For the
-    four template correctors (Raw / Verbal / NaiveFull /
+    The wrapping is unconditional. For :class:`RampartCorrector`
+    the wrapped form adds ``protocol_retries=2`` behaviour. For
+    the four template correctors (Raw / Verbal / NaiveFull /
     NaiveTruncated), the decorators are hint-emitters the
     correctors ignore, so the wrapping is a no-op behaviourally —
     one unconditional code path is simpler than type-sniffing
@@ -139,8 +131,7 @@ def apply_default_wrapping(
             provider high-temperature table. Falls through to the
             :class:`EmptyRetryingCorrector` defaults when ``None``.
         protocol_retries: ``retries`` argument for
-            :class:`ProtocolRetryingCorrector`. Default 2 matches
-.
+            :class:`ProtocolRetryingCorrector`. Default 2.
 
     Returns:
         The wrapped corrector. Conforms to :class:`Corrector`.
@@ -159,7 +150,6 @@ def apply_default_wrapping(
 # name on every entry point — :func:`run_correction` and
 # :meth:`Gate.correct` — so the helper reference inside the function
 # body goes through this private alias to avoid the collision.
-# (v0.0.44).
 _apply_default_wrapping = apply_default_wrapping
 
 
@@ -205,10 +195,9 @@ def run_correction(
             decorators when ``apply_default_wrapping`` is True —
             "loop" refers to refinement retry, not protocol retry.
         loop_options: :class:`LoopOptions` instance. Defaults to
-            the defaults.
+            its built-in defaults.
         acceptance: :class:`AcceptanceCriteria` instance. Defaults
-            to the v0.0.31 default
-            (``require_validates=True, require_distinct_from_input=True``).
+            to ``require_validates=True, require_distinct_from_input=True``.
         telemetry: :class:`CorrectorTelemetry`. Defaults to
             :class:`NullTelemetry` (no per-call records emitted).
         apply_default_wrapping: when True (default), wrap the

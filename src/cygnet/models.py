@@ -496,7 +496,7 @@ class StructuralValidatorResult(BaseModel):
     contract in ``docs/architecture.md`` (parse-category first, then
     backend authority descending: explain > mirror_execute > ast >
     builtin). ``error_payload`` always equals ``all_errors[0]`` for
-    backwards compatibility with v0.0.24 callers that consume the
+    backwards compatibility with callers that consume the
     single-error surface.
     """
 
@@ -513,7 +513,8 @@ class StructuralValidatorResult(BaseModel):
             "The first failing backend's typed payload, or None on success. "
             "In ``collect_all`` mode this mirrors ``all_errors[0]``; in "
             "``short_circuit`` mode it carries the single short-circuited "
-            "error. Kept on the v0.0.24 type for backwards compatibility."
+            "error. Kept for backwards compatibility with the single-error "
+            "surface."
         ),
     )
     all_errors: list[StructuralErrorPayload] = Field(
@@ -557,18 +558,16 @@ class StructuralValidatorResult(BaseModel):
                     f"error_payload.category={self.error_payload.category!r}"
                 )
             # Auto-populate ``all_errors`` from ``error_payload`` when the
-            # caller built the result with only the v0.0.24 fields. This
-            # preserves backwards compatibility for backends and tests
-            # written before the multi-error surface landed: a single
-            # ``error_payload`` always corresponds to ``all_errors=[payload]``.
+            # caller built the result with only the single-error fields.
+            # A single ``error_payload`` always corresponds to
+            # ``all_errors=[payload]``.
             if not self.all_errors:
                 object.__setattr__(self, "all_errors", [self.error_payload])
             if self.all_errors[0] != self.error_payload:
                 raise ValueError(
                     "error_payload must equal all_errors[0]; this invariant "
                     "is the backwards-compatibility contract between the "
-                    "v0.0.24 single-error surface and the v0.0.25 "
-                    "multi-error surface."
+                    "single-error and multi-error surfaces."
                 )
         return self
 
@@ -763,14 +762,13 @@ class MirrorBuildReport(BaseModel):
 class CorrectorResult(BaseModel):
     """Result of invoking the configured corrector on a failed gate.
 
-    v0.0.30 relaxed the ``refined_query`` invariant: when the model
-    echoes the input verbatim, the corrector now returns
+    When the model echoes the input verbatim, the corrector returns
     ``action="abort"`` with ``reason="model_echoed_input"`` and
-    ``refined_query`` populated with the echoed text. The bench
-    records what the model declined to change rather than discarding
-    it. Other abort reasons (``protocol_failure``,
-    ``empty_cypher_after_retry``, ``budget_exceeded``,
-    ``exception``) leave ``refined_query`` at ``None``.
+    ``refined_query`` populated with the echoed text so callers can
+    record what the model declined to change. Other abort reasons
+    (``protocol_failure``, ``empty_cypher_after_retry``,
+    ``budget_exceeded``, ``exception``) leave ``refined_query`` at
+    ``None``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -802,10 +800,10 @@ class CorrectorResult(BaseModel):
     reason: str | None = Field(
         default=None,
         description=(
-            "v0.0.30: structured abort reason. Populated when ``action='abort'``. "
+            "Structured abort reason. Populated when ``action='abort'``. "
             "Values: ``protocol_failure``, ``empty_cypher_after_retry``, "
             "``model_echoed_input``, ``budget_exceeded``, ``exception``. "
-            "``None`` on ``action='refined'``. Analysis notebooks branch on this "
+            "``None`` on ``action='refined'``. Analysis can branch on this "
             "to distinguish transport failures from semantic ones."
         ),
     )
@@ -813,7 +811,7 @@ class CorrectorResult(BaseModel):
         default=0,
         ge=0,
         description=(
-            "v0.0.30: how many LLM calls the corrector made for this outcome "
+            "How many LLM calls the corrector made for this outcome "
             "(including protocol retries). Stays at 0 on the NullCorrector "
             "abort path. A value of 3 means the corrector exhausted its "
             "inner-retry budget."
@@ -822,10 +820,10 @@ class CorrectorResult(BaseModel):
     used_high_temp_retry: bool = Field(
         default=False,
         description=(
-            "v0.0.30: True when the corrector invoked its high-temperature "
-            "retry path (after an initial ``ProtocolEmpty`` outcome). "
-            "Analysis can use this to compute how often the creative-tier "
-            "retry actually produces something."
+            "True when the corrector invoked its high-temperature retry "
+            "path (after an initial ``ProtocolEmpty`` outcome). Analysis "
+            "can use this to compute how often the creative-tier retry "
+            "actually produces something."
         ),
     )
 

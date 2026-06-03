@@ -9,7 +9,7 @@ by the cost gate so neither needs to touch production Neo4j directly.
 The library does not manage Neo4j containers; users supply the Bolt URI
 for a running mirror instance.
 
-Public surface (v0.0.9 onwards):
+Public surface:
 
 - :class:`MirrorGraphBuilder` -- ``build_from_schema``,
   ``teardown``, ``is_built``.

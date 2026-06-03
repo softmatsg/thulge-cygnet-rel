@@ -169,10 +169,9 @@ def __getattr__(name: str) -> object:  # pragma: no cover - thin lazy proxy
     ``corrector`` extra is not installed. The protocol, context,
     null corrector, and prior-attempt models are always available;
     everything else (the LLM clients, the RAMPART-backed corrector
-    + its v0.0.41 V4 / prompt_by_model surface, the v0.0.42
-    relocated template correctors, the v0.0.42 retry decorators)
-    is loaded on first access and raises a clear ``ImportError``
-    when the extra is missing.
+    and its prompt-by-model surface, the template correctors, and
+    the retry decorators) is loaded on first access and raises a
+    clear ``ImportError`` when the extra is missing.
     """
     if name in _LLM_LAZY_NAMES:
         from cygnet.corrector import llm

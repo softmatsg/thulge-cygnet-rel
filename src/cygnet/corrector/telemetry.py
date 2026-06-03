@@ -16,17 +16,7 @@ Two implementations:
 - :class:`FileTelemetry` — writes one JSON file per call into a
   configured directory. Optional ``compute_extras`` hook lets the
   caller augment the record with downstream-computed fields
-  (e.g. the bench adds ``cost_usd`` from its price table).
-
-The on-disk JSON shape from v0.0.30 (``query_id``, ``condition``,
-``attempt_number`` etc.) is a subset of :class:`LLMCallRecord`'s
-serialised form, so analysis notebooks reading old keys continue
-to work. Filename pattern is unchanged:
-``{query_id}_{condition}_a{refinement_attempt}_p{protocol_attempt}.json``.
-
-This module replaces the v0.0.30 ``CallObservation`` /
-``CallObserver`` pair in :mod:`cygnet.corrector.rampart_backed`,
-which was removed in v0.0.31.
+  (e.g. a ``cost_usd`` field from a price table).
 """
 
 from __future__ import annotations
@@ -53,12 +43,9 @@ __all__ = [
 _logger = logging.getLogger("cygnet.corrector.telemetry")
 
 
-# v0.0.42: callback the corrector invokes once per
-# LLM call to surface a per-call observation. Previously defined in
-# :mod:`cygnet.corrector.rampart_backed`; relocated here when the
-# :class:`Corrector` protocol gained ``on_observation`` as a
-# first-class kwarg. Forward-referenced by ``cygnet.corrector.interface``
-# to avoid a circular import.
+# Callback the corrector invokes once per LLM call to surface a
+# per-call observation. Forward-referenced by
+# ``cygnet.corrector.interface`` to avoid a circular import.
 ObservationCallback = Callable[["LLMCallObservation"], None]
 
 
@@ -134,9 +121,7 @@ class LLMCallRecord(BaseModel):
     loop context the corrector does not see.
 
     The serialised form (Pydantic ``model_dump`` / ``model_dump_json``)
-    is what :class:`FileTelemetry` writes. The v0.0.30 per-call JSON
-    file shape is a subset of this record's serialised shape;
-    analysis notebooks reading the old keys continue to work.
+    is what :class:`FileTelemetry` writes.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,11 +129,11 @@ class LLMCallRecord(BaseModel):
     observation: LLMCallObservation
     query_id: str | None = Field(
         default=None,
-        description="Caller-supplied query identifier, when the caller is doing per-query accounting (the bench is).",
+        description="Caller-supplied query identifier, when the caller is doing per-query accounting.",
     )
     condition: str | None = Field(
         default=None,
-        description="Caller-supplied condition tag, when the caller is sweeping conditions (the bench is).",
+        description="Caller-supplied condition tag, when the caller is sweeping conditions.",
     )
     refinement_attempt: int = Field(
         ...,
@@ -194,10 +179,9 @@ class NullTelemetry:
 
 
 ComputeExtras = Callable[[LLMCallRecord], dict[str, Any]]
-"""Hook for adding caller-computed fields to the on-disk JSON. The
-bench uses this to add a ``cost_usd`` field computed from the
-record's token counts via the bench's price table — preserving the
-v0.0.30 per-call file shape exactly."""
+"""Hook for adding caller-computed fields to the on-disk JSON. A
+typical use is adding a ``cost_usd`` field computed from the
+record's token counts via a per-provider price table."""
 
 
 FilenameTemplate = Callable[[LLMCallRecord], str]
@@ -229,10 +213,9 @@ def _default_filename(record: LLMCallRecord) -> str:
     """Default on-disk filename pattern:
     ``{model}_{query_id}_{condition}_a{refinement_attempt}_p{protocol_attempt}.json``
 
-    v0.0.33: includes ``model`` so multiple
-    models in a single lineup don't collide on
-    (query_id, condition, attempt) cells. Sanitises filesystem-
-    unsafe characters (colon, slash, etc.) so Ollama-style
+    Includes ``model`` so multiple models in a single lineup don't
+    collide on (query_id, condition, attempt) cells. Sanitises
+    filesystem-unsafe characters (colon, slash, etc.) so Ollama-style
     identifiers like ``qwen3:14b-q4_K_M`` round-trip across
     filesystems.
 
@@ -253,14 +236,11 @@ def _default_filename(record: LLMCallRecord) -> str:
 class FileTelemetry:
     """Write one JSON file per LLM call into ``directory``.
 
-    Default filename pattern (v0.0.33+):
+    Default filename pattern:
     ``{model}_{query_id}_{condition}_a{refinement_attempt}_p{protocol_attempt}.json``
 
-    v0.0.32 used ``{query_id}_{condition}_a{refinement_attempt}_p{protocol_attempt}.json``
-    without a model segment, which caused collisions when running
-    multiple models against the same corpus.
-    The ``filename_template`` parameter lets a caller restore the
-    old pattern or supply something custom.
+    The ``filename_template`` parameter lets a caller supply
+    something custom.
 
     When ``query_id`` / ``condition`` are ``None`` or empty, segments
     fall back to ``"q"`` and ``"_"`` so the filename always parses.
@@ -269,8 +249,8 @@ class FileTelemetry:
 
     ``compute_extras`` is an optional callable that receives the
     record and returns a dict of extra top-level fields to merge
-    into the JSON output. The bench passes a hook that adds a
-    ``cost_usd`` field. Library users typically pass ``None``.
+    into the JSON output (e.g. ``cost_usd``). Library users typically
+    pass ``None``.
     """
 
     def __init__(
