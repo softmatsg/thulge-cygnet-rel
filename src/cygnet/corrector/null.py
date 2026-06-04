@@ -5,7 +5,7 @@
 Always returns ``action="abort"``. Lets ``Gate.correct`` return a
 typed :class:`CorrectorResult` without requiring an LLM client or
 network access; users who want actual refinement plug in their own
-corrector (the RAMPART-backed default arrives in a later slice).
+corrector or use the RAMPART-backed implementation.
 
 This is not a no-op — the result carries a clear ``reasoning``
 string explaining to the agent loop that no refinement was attempted.

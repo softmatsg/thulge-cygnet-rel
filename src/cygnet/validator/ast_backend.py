@@ -45,7 +45,7 @@ Known limitations (documented for ``docs/borrowing_decisions.md``):
 - Uniqueness constraint violations require runtime data the schema does
   not carry; we only check existence constraints statically. A
   ``CREATE`` that would conflict on a unique key passes the AST
-  backend; the EXPLAIN backend (future slice) will catch it.
+  backend; the EXPLAIN backend catches it.
 """
 
 from __future__ import annotations

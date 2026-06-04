@@ -7,9 +7,8 @@ schema-reference issues surface as GQL status notifications (codes
 ``01N50``/``01N51``/``01N52`` for label/relationship/property), parse
 errors surface as ``CypherSyntaxError`` exceptions.
 
-**Capability scope** (discovered empirically against Neo4j 5 Community
-during the slice's probe phase; recorded here so the gaps stay
-documented):
+**Capability scope** (discovered empirically against Neo4j 5 Community;
+recorded here so the gaps stay documented):
 
 - **Parse:** authoritative. Neo4j's parser is the canonical Cypher
   interpretation; this backend's ``ParseError`` is the strongest in

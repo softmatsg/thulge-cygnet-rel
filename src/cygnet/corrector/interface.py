@@ -5,9 +5,8 @@
 A *corrector* refines a query that failed gating. The interface is
 deliberately duck-typed: any object with a ``correct(query, error,
 context) -> CorrectorResult`` method satisfies it. The RAMPART-backed
-LLM corrector arrives in a later slice; until then, users wire in
-their own implementation or accept the :class:`NullCorrector`
-default.
+LLM corrector is the production default; the :class:`NullCorrector`
+is available as a no-op when no real corrector is configured.
 
 The :class:`CorrectorContext` is the corrector's only window into the
 gate's state. It carries the active schema, optional conversation
@@ -92,7 +91,7 @@ class CorrectorContext(BaseModel):
         ge=1,
         description=(
             "Soft cap the corrector may use to decide between 'refined' "
-            "and 'abort'. Honoured by convention; no slice in the library "
+            "and 'abort'. Honoured by convention; nothing in the library "
             "enforces it (the refinement loop is user-built)."
         ),
     )

@@ -71,8 +71,7 @@ _CygnetYAMLLoader.add_implicit_resolver(  # type: ignore[no-untyped-call]
 )
 
 
-# Recommended property types — informational, not enforced. Strict-mode
-# enforcement is a future slice.
+# Recommended property types — informational, not enforced.
 _RECOMMENDED_PROPERTY_TYPES: Final[frozenset[str]] = frozenset(
     {
         "STRING",

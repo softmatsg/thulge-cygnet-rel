@@ -375,8 +375,7 @@ class MirrorConfig(BaseModel):
 class TransportConfig(BaseModel):
     """Optional transport server settings (MCP, HTTP).
 
-    Empty by default; real transports are added in a later slice. Defined
-    now so the `GateConfig` shape stays stable across slices.
+    Empty by default; transports live in :mod:`cygnet.transports`.
     """
 
     model_config = ConfigDict(extra="forbid")

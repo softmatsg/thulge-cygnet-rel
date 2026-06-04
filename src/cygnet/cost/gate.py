@@ -36,8 +36,8 @@ __all__ = ["CostGate"]
 # ---------------------------------------------------------------------------
 # Cost-driver vocabulary
 #
-# Strings here are part of the immutable artifact surface for this
-# slice: they appear in CostGateResult.cost_driver and in the
+# Strings here are part of the immutable artifact surface: they
+# appear in CostGateResult.cost_driver and in the
 # suggested_mitigations list. Treat as user-facing copy.
 # ---------------------------------------------------------------------------
 

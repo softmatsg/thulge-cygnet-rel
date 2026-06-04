@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
 
-"""Transport surfaces: MCP server (HTTP/FastAPI shipped in a later slice).
+"""Transport surfaces: MCP server and FastAPI/HTTP server.
 
 The Python API (the ``Gate`` object) is the primary surface; MCP is a
 thin wrapper that delegates to the same ``Gate`` instance. The MCP

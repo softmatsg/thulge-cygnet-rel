@@ -2,10 +2,10 @@
 
 """FastMCP server exposing CYGNET as an MCP tool surface.
 
-After this slice, an MCP-speaking agent host (Claude Desktop,
-Cursor, Anthropic Claude, custom frameworks) can spawn this server
-and the six tools below appear in the agent's toolset. Users no
-longer need to write Python wrapper code.
+An MCP-speaking agent host (Claude Desktop, Cursor, Anthropic Claude,
+custom frameworks) can spawn this server and the six tools below
+appear in the agent's toolset. Users no longer need to write Python
+wrapper code.
 
 **Tool surface** (treat names + parameter names as the immutable
 agent-host integration contract; renames break user configurations):

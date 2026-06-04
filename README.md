@@ -1,6 +1,14 @@
-# CYGNET
+# Cypher Gate for Neural Execution Triage (CYGNET)
 
-**Cypher Gate for Neural Execution Triage.**
+**CYGNET: Cypher Gate for Neural Execution Triage and Cost Containment**
+
+Nikodem Tomczak, Thulge Labs, Singapore
+
+[![arXiv](https://img.shields.io/badge/arXiv-2606.04645-b31b1b.svg)](https://arxiv.org/abs/2606.04645)
+
+Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
+
+---
 
 CYGNET is a Python library that gates LLM-generated Cypher queries before
 they execute against production Neo4j. It does three jobs:
@@ -106,17 +114,15 @@ See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for documented limitations and
 follow-ups (mirror property-sampling defaults, Gemma JSON-mode on the
 correction path, EXPLAIN notification handling).
 
-## Paper
-
-CYGNET accompanies the paper *Cypher Gate for Neural Execution Triage*
-(citation forthcoming — DOI / arXiv link will be added on publication).
+## Citation
 
 ```bibtex
-@misc{cygnet2026,
-  author       = {Nikodem Tomczak},
-  title        = {CYGNET: Cypher Gate for Neural Execution Triage},
-  year         = {2026},
-  howpublished = {Thulge Labs},
+@article{tomczak2026cygnet,
+  title={CYGNET: Cypher Gate for Neural Execution Triage and Cost Containment},
+  author={Tomczak, Nikodem},
+  journal={arXiv preprint arXiv:2606.04645},
+  year={2026},
+  url={https://arxiv.org/abs/2606.04645}
 }
 ```
 

@@ -3,11 +3,10 @@
 """Core orchestration: the ``Gate`` that wires schema, validator chain,
 cost, and corrector.
 
-This slice ships the validator side end-to-end: schema spec loading
-(Path B), the builtin validator backend, the chain, and a working
-``Gate.validate(...)``. Cost-gate, corrector, and schema introspection
-(Path A) methods still raise :class:`NotImplementedError` and land in
-later slices.
+Provides schema spec loading (Path B), schema introspection (Path A),
+the builtin and AST validator backends, the validator chain, the cost
+gate, and the corrector surface — all reachable through a single
+``Gate`` instance constructed via :meth:`Gate.from_config`.
 """
 
 from __future__ import annotations

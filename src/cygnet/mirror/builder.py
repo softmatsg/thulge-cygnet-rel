@@ -96,7 +96,7 @@ _FALLBACK_DUMMY: Final[str] = "sample_value"
 
 # Sentinel value used by introspection when relationship endpoints
 # could not be resolved from data. Mirrored from the introspection
-# slice (kept in lock-step here so the builder can recognise it).
+# module and kept in lock-step here so the builder can recognise it.
 _UNKNOWN_ENDPOINT: Final[str] = "Unknown"
 
 

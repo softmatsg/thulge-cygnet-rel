@@ -276,7 +276,7 @@ class SchemaError(BaseModel):
 class PropertyError(BaseModel):
     """Property is referenced with a type incompatible with its declaration.
 
-    ``did_you_mean`` (added in the AST validator slice) is populated when
+    ``did_you_mean`` is populated when
     the failure is a reference-not-found — the property name does not
     match any declared property on the bound variable's labels — rather
     than a type mismatch. For pure type-mismatch failures, the list

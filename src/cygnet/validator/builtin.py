@@ -47,7 +47,7 @@ from typing import Final
 # PropertyError is intentionally NOT imported here: it is the
 # architectural carrier for type-mismatch errors, which this backend
 # does not produce (regexes cannot infer expression types). Type-
-# mismatch detection arrives with the AST backend in a later slice.
+# mismatch detection is performed by the AST backend.
 from cygnet._format import bound_available_in_scope
 from cygnet.models import (
     ParseError,
