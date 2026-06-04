@@ -6,8 +6,6 @@ Nikodem Tomczak, Thulge Labs, Singapore
 
 [![arXiv](https://img.shields.io/badge/arXiv-2606.04645-b31b1b.svg)](https://arxiv.org/abs/2606.04645)
 
-Copyright (c) 2026 Nikodem Tomczak, Thulge Labs. All rights reserved.
-
 ---
 
 CYGNET is a Python library that gates LLM-generated Cypher queries before
